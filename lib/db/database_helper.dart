@@ -17,18 +17,35 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
+
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
   }
 
+  // 🔴 Função para resetar o banco
+  Future<void> resetDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, 'calculadora.db');
+
+    // Fecha a conexão se estiver aberta
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+
+    // Apaga o arquivo físico do banco
+    await deleteDatabase(path);
+
+    // Recria automaticamente ao chamar database novamente
+    _database = await _initDB('calculadora.db');
+  }
+
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 3) {
-      // agora cobre upgrade para versão 3
-      // Verifica se a coluna 'tipo' já existe
       final result = await db.rawQuery("PRAGMA table_info(produto)");
       final hasTipo = result.any((column) => column['name'] == 'tipo');
       if (!hasTipo) {
@@ -39,6 +56,18 @@ class DatabaseHelper {
 
   Future _createDB(Database db, int version) async {
     // ------------------- PRODUTO -------------------
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario TEXT NOT NULL,
+        senha TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        celular TEXT,
+        codigo_liberacao TEXT,
+        confirmado INTEGER DEFAULT 0
+      )
+    ''');
+
     await db.execute('''
       CREATE TABLE IF NOT EXISTS produto (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,6 +160,48 @@ class DatabaseHelper {
         FOREIGN KEY (insumo_id) REFERENCES insumo(id)
       )
     ''');
+  }
+
+  //  =================== USUÁRIO ======================
+  // Inserir o usuário (apenas 1 usuário)
+  Future<int> inserirUsuario(Map<String, dynamic> usuario) async {
+    final db = await database;
+    return await db.insert('usuarios', usuario);
+  }
+
+  // Buscar o usuário (retorna o único usuário do app)
+  Future<Map<String, dynamic>?> buscarUsuario() async {
+    final db = await database;
+    final res = await db.query('usuarios', limit: 1);
+    if (res.isNotEmpty) return res.first;
+    return null;
+  }
+
+  // Atualizar usuário (para confirmar o cadastro ou alterar dados)
+  Future<int> atualizarUsuario(Map<String, dynamic> usuario) async {
+    final db = await database;
+    final id = usuario['id'];
+    return await db.update(
+      'usuarios',
+      usuario,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Busca usuário pelo email
+  Future<Map<String, dynamic>?> buscarUsuarioPorEmail(String email) async {
+    final db = await database;
+    final res = await db.query(
+      'usuarios',
+      where: 'email = ?',
+      whereArgs: [email],
+      limit: 1,
+    );
+    if (res.isNotEmpty) {
+      return res.first;
+    }
+    return null;
   }
 
   // ==================== CRUD PRODUTO ====================
