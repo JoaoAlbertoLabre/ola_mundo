@@ -24,18 +24,37 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _verificarUsuariosExistentes() async {
     final db = DatabaseHelper.instance;
-    final temUsuarios = await db.temRegistros('usuarios');
+    final todosUsuarios = await db.listarUsuarios();
+
+    bool temUsuarioAtivo = false;
+
+    final agoraUtc = DateTime.now().toUtc();
+    for (var u in todosUsuarios) {
+      if (u['confirmado'] == 1) {
+        final dataLiberacaoUtc = DateTime.parse(u['data_liberacao']).toUtc();
+        final expiraEmUtc = dataLiberacaoUtc.add(
+          Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
+        );
+        if (agoraUtc.isBefore(expiraEmUtc)) {
+          temUsuarioAtivo = true;
+          break;
+        }
+      }
+    }
+
     setState(() {
       _exibirNovoUsuario =
-          !temUsuarios; // se houver usuário, não mostra o botão
+          !temUsuarioAtivo; // se não há usuário ativo, mostra botão
     });
+
+    print("🔹 Tem usuário ativo: $temUsuarioAtivo");
   }
 
   void _entrar() async {
-    final id = _idController.text.trim();
+    final nomeDigitado = _idController.text.trim(); // pega o campo "ID Usuário"
     final senha = _passwordController.text.trim();
 
-    if (id.isEmpty || senha.isEmpty) {
+    if (nomeDigitado.isEmpty || senha.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Preencha todos os campos")));
@@ -43,15 +62,52 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final db = DatabaseHelper.instance;
-    final usuario = await db.buscarUsuario();
 
-    if (usuario == null || usuario['senha'] != senha) {
+    // Buscar usuário pelo nome
+    final usuario = await db.buscarUsuarioPorNome(nomeDigitado);
+
+    if (usuario == null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text("ID ou senha inválidos")));
+      ).showSnackBar(const SnackBar(content: Text("Usuário não encontrado")));
       return;
     }
 
+    // Verifica senha
+    if (usuario['senha'] != senha) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Senha incorreta")));
+      return;
+    }
+
+    // Verifica se o usuário confirmou o código
+    if (usuario['confirmado'] != 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Usuário ainda não confirmou o código")),
+      );
+      return;
+    }
+
+    // Verifica se a licença ainda está válida
+    final agoraUtc = DateTime.now().toUtc();
+    final dataLiberacaoUtc = DateTime.parse(usuario['data_liberacao']).toUtc();
+    final expiraEmUtc = dataLiberacaoUtc.add(
+      Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
+    );
+
+    if (agoraUtc.isAfter(expiraEmUtc)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Licença expirou, solicite novo cadastro"),
+        ),
+      );
+      return;
+    }
+
+    // Se chegou aqui, usuário tem licença ativa e senha correta
+
+    // Login bem-sucedido → redireciona para tela principal
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const CadastroScreen()),

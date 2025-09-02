@@ -4,6 +4,8 @@ import 'confirmacao_screen.dart';
 import '../utils/email_helper.dart';
 import '../utils/codigo_helper.dart';
 
+const int PRAZO_EXPIRACAO_MINUTOS = 720; // 2 dias = 2880 minutos
+
 class NovoUsuarioScreen extends StatefulWidget {
   const NovoUsuarioScreen({super.key});
 
@@ -29,37 +31,13 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
 
   Future<void> _cadastrarUsuario() async {
     if (!_formKey.currentState!.validate()) return;
-
+    print("⚠️ Formulário inválido");
     final db = DatabaseHelper.instance;
 
     // Gera código de liberação
     final codigoLiberacao = CodigoHelper.gerarCodigo();
-
-    // Insere no banco
-    await db.inserirUsuario({
-      'usuario': _usuarioController.text.trim(),
-      'senha': _senhaController.text.trim(),
-      'email': _emailController.text.trim(),
-      'celular': _celularController.text.trim(),
-      'codigo_liberacao': codigoLiberacao,
-      'confirmado': 0,
-    });
-
-    // 3. Conferir no console
-    final usuarioSalvo = await db.buscarUsuarioPorEmail(
-      _emailController.text.trim(),
-    );
-    print('Usuário salvo: $usuarioSalvo');
-
-    // Envia e-mail para administrador
-    await enviarEmailAdmin(
-      nome: _usuarioController.text.trim(),
-      email: _emailController.text.trim(),
-      celular: _celularController.text.trim(),
-      codigoLiberacao: codigoLiberacao,
-    );
-
-    // Redireciona para tela de confirmação
+    print("🔹 Código gerado para o usuário: $codigoLiberacao");
+    // 1️⃣ Navega imediatamente para a tela de confirmação
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -69,6 +47,39 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
         ),
       ),
     );
+
+    // 2️⃣ Depois executa as operações em background
+    Future.microtask(() async {
+      // Insere no banco
+      await db.inserirUsuario({
+        'usuario': _usuarioController.text.trim(),
+        'senha': _senhaController.text.trim(),
+        'email': _emailController.text.trim(),
+        'celular': _celularController.text.trim(),
+        'codigo_liberacao': codigoLiberacao,
+        'confirmado': 0,
+        'data_liberacao': DateTime.now()
+            .add(const Duration(minutes: PRAZO_EXPIRACAO_MINUTOS))
+            .toIso8601String(),
+      });
+
+      // Envia e-mail para administrador
+      await enviarEmailAdmin(
+        nome: _usuarioController.text.trim(),
+        email: _emailController.text.trim(),
+        celular: _celularController.text.trim(),
+        codigoLiberacao: codigoLiberacao,
+      );
+
+      print('Usuário cadastrado e e-mail enviado em background');
+    });
+
+    // Lista todos os usuários no banco para debug
+    final todosUsuarios = await db.listarUsuarios();
+    print("🔹 Usuários cadastrados no banco:");
+    for (var u in todosUsuarios) {
+      print(u);
+    }
   }
 
   String? _validarEmail(String? value) {

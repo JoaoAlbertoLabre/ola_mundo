@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
-import '../utils/codigo_helper.dart';
 
 class ConfirmacaoScreen extends StatefulWidget {
   final String email;
@@ -36,8 +35,11 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
 
   Future<void> _confirmarCodigo() async {
     final codigoDigitado = _codigoController.text.trim();
+    print("🔹 Código digitado: '$codigoDigitado'");
+
     if (codigoDigitado.isEmpty) {
       _mostrarAlerta("Insira o código");
+      print("⚠️ Código vazio");
       return;
     }
 
@@ -45,18 +47,48 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
 
     // Buscar usuário pelo email
     final usuario = await db.buscarUsuarioPorEmail(widget.email);
+    print("🔹 Usuário encontrado no banco: $usuario");
 
     if (usuario == null) {
       _mostrarAlerta("Usuário não encontrado");
+      print("❌ Usuário não encontrado para email: ${widget.email}");
       return;
     }
 
+    // Debug: códigos
+    final codigoCorreto = usuario['codigo_liberacao']?.toString() ?? '';
+    print("🔹 Código correto no banco: '$codigoCorreto'");
+
+    // Debug: datas
+    final dataLiberacaoStr = usuario['data_liberacao']?.toString() ?? '';
+    print("🔹 Data de liberação no banco: '$dataLiberacaoStr'");
+
+    DateTime agoraUtc = DateTime.now().toUtc();
+    print("🔹 Agora UTC: $agoraUtc");
+
+    if (dataLiberacaoStr.isNotEmpty) {
+      final expiraEmUtc = DateTime.parse(dataLiberacaoStr).toUtc();
+      print("🔹 Código expira em UTC: $expiraEmUtc");
+
+      if (agoraUtc.isAfter(expiraEmUtc)) {
+        _mostrarAlerta("O código expirou, solicite um novo");
+        print("❌ Código expirado");
+        return;
+      } else {
+        print("✅ Código ainda válido");
+      }
+    } else {
+      print("⚠️ Data de liberação vazia ou inválida");
+    }
+
     // Verifica se o código é igual ao cadastrado no banco
-    final codigoCorreto = usuario['codigo_liberacao'];
     if (codigoDigitado != codigoCorreto) {
       _mostrarAlerta("Código inválido");
+      print("❌ Código digitado não confere com o banco");
       return;
     }
+
+    print("✅ Código confirmado com sucesso, atualizando usuário");
 
     // Atualiza confirmado = 1
     await db.atualizarUsuario({'id': usuario['id'], 'confirmado': 1});

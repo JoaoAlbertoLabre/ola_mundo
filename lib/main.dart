@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ola_mundo/db/database_helper.dart';
 import 'screens/login_screen.dart';
 
-const bool resetarDb = true; // altere para true quando precisar
+const bool resetarDb = false; // altere para true quando precisar
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

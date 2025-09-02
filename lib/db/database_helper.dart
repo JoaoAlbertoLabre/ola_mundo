@@ -61,9 +61,10 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         usuario TEXT NOT NULL,
         senha TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        celular TEXT,
+        email TEXT NOT NULL,
+        celular TEXT NOT NULL,
         codigo_liberacao TEXT,
+        data_liberacao TEXT,
         confirmado INTEGER DEFAULT 0
       )
     ''');
@@ -202,6 +203,40 @@ class DatabaseHelper {
       return res.first;
     }
     return null;
+  }
+
+  // DatabaseHelper.dart
+  Future<List<Map<String, dynamic>>> listarUsuarios() async {
+    final db = await database;
+    final res = await db.query('usuarios');
+    return res;
+  }
+
+  Future<Map<String, dynamic>?> buscarUsuarioPorNome(String nome) async {
+    final db = await database;
+    final res = await db.query(
+      'usuarios',
+      where: 'usuario = ?',
+      whereArgs: [nome],
+      limit: 1,
+    );
+    return res.isNotEmpty ? res.first : null;
+  }
+
+  Future<Map<String, dynamic>?> buscarUltimoUsuario() async {
+    final db = await database;
+
+    final resultado = await db.query(
+      'usuarios',
+      orderBy: 'id DESC', // ordena do maior para o menor
+      limit: 1, // pega apenas o último
+    );
+
+    if (resultado.isNotEmpty) {
+      return resultado.first;
+    } else {
+      return null; // nenhum usuário encontrado
+    }
   }
 
   // ==================== CRUD PRODUTO ====================
