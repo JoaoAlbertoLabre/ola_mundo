@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:ola_mundo/db/database_helper.dart';
 import 'package:ola_mundo/models/produtos_model.dart';
-import 'package:ola_mundo/screens/composicao_produto_screen.dart'; // tela de composição que vamos criar
+import 'package:ola_mundo/screens/composicao_produto_screen.dart';
 
 class ProdutoScreen extends StatefulWidget {
   const ProdutoScreen({Key? key}) : super(key: key);
@@ -17,7 +17,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
   double totalCustosFixos = 0;
   double faturamento = 0;
   double totalCustoComercial = 0;
-  double lucroDesejado = 20; // valor padrão, pode buscar do banco
 
   @override
   void initState() {
@@ -46,7 +45,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
   Future<void> abrirCadastroProduto() async {
     final db = DatabaseHelper.instance;
 
-    // Verifica se tabelas obrigatórias têm registros
     final temCFixo = await db.temRegistros('custo_fixo');
     final temComercial = await db.temRegistros('custo_comercial');
     final temFaturamento = await db.temRegistros('faturamento');
@@ -77,7 +75,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
       return;
     }
 
-    // Se chegou aqui, todas as tabelas estão populadas, abre a tela de cadastro
     final resultado = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -85,7 +82,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
           totalCustosFixos: totalCustosFixos,
           faturamento: faturamento,
           totalCustoComercial: totalCustoComercial,
-          // lucroDesejado: lucroDesejado, // se usar o último lucro cadastrado
         ),
       ),
     );
@@ -98,14 +94,18 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Produtos")),
+      appBar: AppBar(
+        title: const Text("Produtos"),
+        backgroundColor: Colors.blue,
+        centerTitle: true,
+      ),
       body: produtos.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
+              padding: const EdgeInsets.all(12),
               itemCount: produtos.length,
               itemBuilder: (context, index) {
                 final p = produtos[index];
-
                 final venda = p.venda ?? 0;
                 final custo = p.custo ?? 0;
 
@@ -123,25 +123,37 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                 final percCC = venda == 0 ? 0 : (cc / venda * 100);
 
                 return Card(
-                  margin: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 8,
+                  color: Colors.blueGrey[50],
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
+                    contentPadding: const EdgeInsets.all(12),
                     title: Text(
                       p.nome,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const SizedBox(height: 6),
                         Text(
-                          'Custo: R\$ ${custo.toStringAsFixed(2)}    Venda: R\$ ${venda.toStringAsFixed(2)}',
+                          'Custo: R\$ ${custo.toStringAsFixed(2)}   '
+                          'Venda: R\$ ${venda.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 14),
                         ),
+                        const SizedBox(height: 4),
                         Text(
-                          'Lucro: % ${percLucro.toStringAsFixed(0)} R\$ ${lucro.toStringAsFixed(2)}    '
-                          'CF: % ${percCF.toStringAsFixed(0)} R\$ ${cf.toStringAsFixed(2)}    '
-                          'CC: % ${percCC.toStringAsFixed(0)} R\$ ${cc.toStringAsFixed(2)}',
+                          'Lucro: % ${percLucro.toStringAsFixed(0)} '
+                          'R\$ ${lucro.toStringAsFixed(2)}   '
+                          'CF: % ${percCF.toStringAsFixed(0)} '
+                          'R\$ ${cf.toStringAsFixed(2)}   '
+                          'CC: % ${percCC.toStringAsFixed(0)} '
+                          'R\$ ${cc.toStringAsFixed(2)}',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ],
@@ -150,7 +162,7 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit),
+                          icon: const Icon(Icons.edit, color: Colors.blueGrey),
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -164,7 +176,7 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                           ).then((_) => carregarDados()),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete),
+                          icon: const Icon(Icons.delete, color: Colors.red),
                           onPressed: () async {
                             await DatabaseHelper.instance.deletarProduto(p.id!);
                             carregarDados();
@@ -176,16 +188,17 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: abrirCadastroProduto,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text("Novo"),
+        //backgroundColor: Colors.blueGrey[700],
       ),
     );
   }
 }
 
 // === Tela de Formulário para cadastro/edição de Produtos ===
-
 class ProdutoFormScreen extends StatefulWidget {
   final Produto? item;
   final double faturamento;
@@ -246,20 +259,18 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
     if (!_formKey.currentState!.validate()) return;
 
-    // Define o custo inicial
     double custo = tipoProduto == "Comprado"
         ? double.tryParse(_custoController.text) ?? 0
-        : 0; // Produzido: custo será calculado via composição
+        : 0;
 
     final ultimoLucro = await db.obterUltimoLucro();
 
-    // Cria o produto no banco
     final produto = Produto(
       id: widget.item?.id,
       nome: _nomeController.text,
       un: _unController.text,
       custo: custo,
-      venda: 0, // temporário
+      venda: 0,
       tipo: tipoProduto,
     );
 
@@ -272,7 +283,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       await db.atualizarProduto(produto.toMap());
     }
 
-    // Produto produzido: abre composição e atualiza custo
     if (tipoProduto == "Produzido") {
       final custoComposicao = await Navigator.push<double>(
         context,
@@ -287,7 +297,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
     }
 
-    // Calcula o preço de venda se o cliente não informou
     double venda = double.tryParse(_vendaController.text) ?? 0;
     if (venda == 0) {
       final indiceCF = widget.totalCustosFixos / widget.faturamento;
@@ -304,11 +313,20 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     if (mounted) Navigator.pop(context, true);
   }
 
+  InputDecoration _inputDecoration(String label, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.item == null ? "Novo Produto" : "Editar Produto"),
+        backgroundColor: Colors.blue, // garante azul no topo
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -319,16 +337,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               // Nome
               TextFormField(
                 controller: _nomeController,
-                decoration: const InputDecoration(labelText: "Nome"),
+                decoration: _inputDecoration("Nome"),
                 validator: (value) =>
                     value == null || value.isEmpty ? "Informe o nome" : null,
               ),
+              const SizedBox(height: 16),
+
               // Unidade
               TextFormField(
                 controller: _unController,
-                decoration: const InputDecoration(labelText: "Unidade"),
+                decoration: _inputDecoration("Unidade"),
               ),
               const SizedBox(height: 16),
+
               // Tipo de Produto
               const Text(
                 "Tipo de Produto",
@@ -363,11 +384,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+
               // Custo
               TextFormField(
                 controller: _custoController,
                 enabled: tipoProduto == "Comprado",
-                decoration: const InputDecoration(labelText: "Custo"),
+                decoration: _inputDecoration("Custo"),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -380,17 +402,29 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                   return null;
                 },
               ),
-              // Venda
+              const SizedBox(height: 16),
+
+              // Preço de Venda
               TextFormField(
                 controller: _vendaController,
-                decoration: const InputDecoration(labelText: "Preço de Venda"),
+                decoration: _inputDecoration(
+                  "Preço de Venda",
+                  hint: "Opcional, calculo automatico",
+                ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
               ),
               const SizedBox(height: 20),
+
               ElevatedButton(
                 onPressed: _salvarProduto,
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  minimumSize: const Size(double.infinity, 48),
+                ),
                 child: const Text("Salvar"),
               ),
             ],

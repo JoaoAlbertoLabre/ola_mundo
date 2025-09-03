@@ -23,31 +23,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _verificarUsuariosExistentes() async {
-    final db = DatabaseHelper.instance;
-    final todosUsuarios = await db.listarUsuarios();
-
-    bool temUsuarioAtivo = false;
-
-    final agoraUtc = DateTime.now().toUtc();
-    for (var u in todosUsuarios) {
-      if (u['confirmado'] == 1) {
-        final dataLiberacaoUtc = DateTime.parse(u['data_liberacao']).toUtc();
-        final expiraEmUtc = dataLiberacaoUtc.add(
-          Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
-        );
-        if (agoraUtc.isBefore(expiraEmUtc)) {
-          temUsuarioAtivo = true;
-          break;
-        }
-      }
-    }
-
     setState(() {
-      _exibirNovoUsuario =
-          !temUsuarioAtivo; // se não há usuário ativo, mostra botão
+      _exibirNovoUsuario = true; // botão sempre visível
     });
-
-    print("🔹 Tem usuário ativo: $temUsuarioAtivo");
+    print("🔹 Botão 'Novo Usuário' sempre visível");
   }
 
   void _entrar() async {
@@ -134,11 +113,33 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.lock, size: 80, color: Colors.blue),
-              const SizedBox(height: 20),
+              // Logo estilizada (exemplo com ícones matemáticos)
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.calculate, size: 80, color: Colors.blueAccent),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Icon(
+                      Icons.percent,
+                      size: 32,
+                      color: Colors.orangeAccent,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Nome do app
               const Text(
-                "Bem-vindo",
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                "VENDO CERTO",
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
+                  letterSpacing: 1.5,
+                ),
               ),
               const SizedBox(height: 40),
 
@@ -146,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: _idController,
                 decoration: InputDecoration(
-                  labelText: "ID Usuário",
+                  labelText: "Nome de usuário",
                   filled: true,
                   fillColor: Colors.white,
                   prefixIcon: const Icon(Icons.person),
@@ -191,12 +192,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 15),
 
-              // Botão Novo Usuário (aparece só se não houver usuário cadastrado)
+              // Botão Novo Usuário
               if (_exibirNovoUsuario)
                 TextButton(
                   onPressed: _novoUsuario,
                   child: const Text(
-                    "Novo Usuário",
+                    "Novo Cadastro",
                     style: TextStyle(fontSize: 16, color: Colors.blue),
                   ),
                 ),

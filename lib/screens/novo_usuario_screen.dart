@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:io'; // para exit(0)
 import '../db/database_helper.dart';
 import 'confirmacao_screen.dart';
 import '../utils/email_helper.dart';
 import '../utils/codigo_helper.dart';
 
-const int PRAZO_EXPIRACAO_MINUTOS = 720; // 2 dias = 2880 minutos
+const int PRAZO_EXPIRACAO_MINUTOS = 43200; // 2 dias = 2880 minutos
+const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
 
 class NovoUsuarioScreen extends StatefulWidget {
   const NovoUsuarioScreen({super.key});
@@ -31,13 +33,10 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
 
   Future<void> _cadastrarUsuario() async {
     if (!_formKey.currentState!.validate()) return;
-    print("⚠️ Formulário inválido");
-    final db = DatabaseHelper.instance;
 
-    // Gera código de liberação
+    final db = DatabaseHelper.instance;
     final codigoLiberacao = CodigoHelper.gerarCodigo();
-    print("🔹 Código gerado para o usuário: $codigoLiberacao");
-    // 1️⃣ Navega imediatamente para a tela de confirmação
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -48,9 +47,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
       ),
     );
 
-    // 2️⃣ Depois executa as operações em background
     Future.microtask(() async {
-      // Insere no banco
       await db.inserirUsuario({
         'usuario': _usuarioController.text.trim(),
         'senha': _senhaController.text.trim(),
@@ -63,23 +60,13 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
             .toIso8601String(),
       });
 
-      // Envia e-mail para administrador
       await enviarEmailAdmin(
         nome: _usuarioController.text.trim(),
         email: _emailController.text.trim(),
         celular: _celularController.text.trim(),
         codigoLiberacao: codigoLiberacao,
       );
-
-      print('Usuário cadastrado e e-mail enviado em background');
     });
-
-    // Lista todos os usuários no banco para debug
-    final todosUsuarios = await db.listarUsuarios();
-    print("🔹 Usuários cadastrados no banco:");
-    for (var u in todosUsuarios) {
-      print(u);
-    }
   }
 
   String? _validarEmail(String? value) {
@@ -102,44 +89,132 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     return null;
   }
 
+  Widget _campoTexto({
+    required String label,
+    required TextEditingController controller,
+    required String? Function(String?) validator,
+    required IconData icon,
+    bool obscure = false,
+    String? dica = '',
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: controller,
+          obscureText: obscure,
+          decoration: InputDecoration(
+            labelText: "$label*",
+            hintText: dica,
+            prefixIcon: Icon(icon, color: primaryColor),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          validator: validator,
+        ),
+        if (obscure)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              "*Obrigatório",
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Cadastro Novo Usuário")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(
+        title: const Text(
+          "Cadastro Novo Usuário",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        backgroundColor: primaryColor,
+        elevation: 2,
+        actions: [
+          TextButton.icon(
+            onPressed: () => exit(0), // fecha o app
+            icon: const Icon(Icons.exit_to_app, color: Colors.white),
+            label: const Text(
+              "Sair",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.white, primaryColor.withOpacity(0.05)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
         child: Form(
           key: _formKey,
           child: ListView(
             children: [
-              TextFormField(
-                controller: _usuarioController,
-                decoration: const InputDecoration(labelText: "Nome"),
-                validator: (value) => value!.isEmpty ? "Informe o nome" : null,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: "E-mail"),
-                validator: _validarEmail,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _celularController,
-                decoration: const InputDecoration(labelText: "Celular"),
-                validator: _validarCelular,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _senhaController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Senha"),
-                validator: _validarSenha,
+              const Icon(Icons.person_add_alt_1, size: 80, color: primaryColor),
+              const SizedBox(height: 20),
+              const Text(
+                "O código de liberação será enviado para seu e-mail ou celular informado.",
+                style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _cadastrarUsuario,
-                child: const Text("Cadastrar"),
+              _campoTexto(
+                label: "Nome",
+                controller: _usuarioController,
+                validator: (value) => value!.isEmpty ? "Informe o nome" : null,
+                icon: Icons.person,
+              ),
+              _campoTexto(
+                label: "E-mail",
+                controller: _emailController,
+                validator: _validarEmail,
+                icon: Icons.email,
+              ),
+              _campoTexto(
+                label: "Celular",
+                controller: _celularController,
+                validator: _validarCelular,
+                icon: Icons.phone,
+              ),
+              _campoTexto(
+                label: "Senha",
+                controller: _senhaController,
+                validator: _validarSenha,
+                icon: Icons.lock,
+                obscure: true,
+                dica: "Mínimo 6 caracteres",
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor.withOpacity(0.8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _cadastrarUsuario,
+                  child: const Text(
+                    "Cadastrar",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
             ],
           ),

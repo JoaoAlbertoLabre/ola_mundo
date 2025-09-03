@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ola_mundo/db/database_helper.dart';
 import 'package:ola_mundo/models/faturamento_model.dart';
 
+const Color primaryColor = Color(0xFF81D4FA);
+
 class FaturamentoScreen extends StatefulWidget {
   const FaturamentoScreen({Key? key}) : super(key: key);
 
@@ -51,13 +53,21 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
     double total = calcularTotal();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Faturamento')),
+      appBar: AppBar(
+        title: const Text(
+          'Faturamento',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: primaryColor,
+        centerTitle: true,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             if (faturamentos.isEmpty)
               ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
                 onPressed: () => abrirForm(),
                 child: const Text('Inserir Faturamento'),
               ),
@@ -76,9 +86,12 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
                           ),
                         ),
                         TextButton.icon(
-                          icon: const Icon(Icons.add),
-                          label: const Text('Novo'),
                           onPressed: () => abrirForm(),
+                          icon: const Icon(Icons.add, color: Colors.black),
+                          label: const Text(
+                            'Novo',
+                            style: TextStyle(color: Colors.black),
+                          ),
                         ),
                       ],
                     ),
@@ -97,11 +110,17 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit),
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.blueGrey,
+                                  ),
                                   onPressed: () => abrirForm(item: f),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
                                   onPressed: () => deletarFaturamento(f.id!),
                                 ),
                               ],
@@ -120,7 +139,7 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
   }
 }
 
-// === Formulário de cadastro/edição de Faturamento ===
+// === Formulário de Faturamento ===
 class FaturamentoForm extends StatefulWidget {
   final Faturamento? item;
   const FaturamentoForm({Key? key, this.item}) : super(key: key);
@@ -139,7 +158,7 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
     super.initState();
     if (widget.item != null) {
       dataCtrl.text = widget.item!.data;
-      valorCtrl.text = widget.item!.valor.toString();
+      valorCtrl.text = widget.item!.valor.toStringAsFixed(2);
     }
   }
 
@@ -159,6 +178,65 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
     Navigator.pop(context);
   }
 
+  Future<void> selecionarData() async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: dataCtrl.text.isNotEmpty
+          ? DateTime.tryParse(dataCtrl.text) ?? DateTime.now()
+          : DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (picked != null) {
+      setState(() {
+        dataCtrl.text =
+            '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      });
+    }
+  }
+
+  Widget _campoData() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: TextField(
+        controller: dataCtrl,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: 'Data',
+          prefixIcon: const Icon(Icons.calendar_today),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 10,
+          ),
+        ),
+        onTap: selecionarData,
+      ),
+    );
+  }
+
+  Widget _campoValor() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: TextField(
+        controller: valorCtrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: 'Valor (R\$)',
+          prefixText: 'R\$ ',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 10,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,24 +244,32 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
         title: Text(
           widget.item == null ? 'Novo Faturamento' : 'Editar Faturamento',
         ),
+        backgroundColor: primaryColor,
+        centerTitle: true,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(
-              controller: dataCtrl,
-              decoration: const InputDecoration(labelText: 'Data'),
-            ),
-            TextField(
-              controller: valorCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Valor (R\$)'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: salvarOuAtualizar,
-              child: Text(widget.item == null ? 'Salvar' : 'Atualizar'),
+            _campoData(),
+            _campoValor(),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor.withOpacity(0.8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: salvarOuAtualizar,
+                child: Text(
+                  widget.item == null ? 'Salvar' : 'Atualizar',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           ],
         ),

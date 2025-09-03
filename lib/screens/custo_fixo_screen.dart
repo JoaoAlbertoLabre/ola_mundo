@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ola_mundo/db/database_helper.dart';
 import 'package:ola_mundo/models/custo_fixo_model.dart';
 
-// Tela de listagem (opcional)
+const Color primaryColor = Color(0xFF81D4FA); // Azul suave
+
 class CustoFixoScreen extends StatefulWidget {
   const CustoFixoScreen({Key? key}) : super(key: key);
 
@@ -59,7 +60,10 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
     double total = custos.isNotEmpty ? calcularTotal(custos.first) : 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Custo Fixo')),
+      appBar: AppBar(
+        title: const Text('Custo Fixo'),
+        backgroundColor: primaryColor,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -85,14 +89,13 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  /*IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () => abrirForm(),
-                  ),*/
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.edit),
+                        icon: const Icon(
+                          Icons.edit,
+                          color: Colors.blueGrey,
+                        ), // azul escuro
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -103,7 +106,10 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
                         },
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete),
+                        icon: const Icon(
+                          Icons.delete,
+                          color: Colors.red,
+                        ), // vermelho
                         onPressed: () => deletarCusto(custos.first.id!),
                       ),
                     ],
@@ -117,7 +123,6 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
   }
 }
 
-// Tela de formulário (edição/inclusão)
 class CustoFixoForm extends StatefulWidget {
   final CustoFixo? item;
   const CustoFixoForm({Key? key, this.item}) : super(key: key);
@@ -188,6 +193,28 @@ class _CustoFixoFormState extends State<CustoFixoForm> {
     Navigator.pop(context);
   }
 
+  Widget _campoValor(String label, TextEditingController ctrl) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(
+        height: 50,
+        child: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: Icon(Icons.attach_money, color: primaryColor),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 10,
+              horizontal: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -195,80 +222,43 @@ class _CustoFixoFormState extends State<CustoFixoForm> {
         title: Text(
           widget.item == null ? 'Novo Custo Fixo' : 'Editar Custo Fixo',
         ),
+        backgroundColor: primaryColor,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: SingleChildScrollView(
           child: Column(
             children: [
-              TextField(
-                controller: aluguelCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Aluguel'),
-              ),
-              TextField(
-                controller: contadorCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Contador'),
-              ),
-              TextField(
-                controller: telefoneInternetCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Telefone/Internet',
+              _campoValor('Aluguel', aluguelCtrl),
+              _campoValor('Contador', contadorCtrl),
+              _campoValor('Telefone/Internet', telefoneInternetCtrl),
+              _campoValor('Aplicativos', aplicativosCtrl),
+              _campoValor('Energia', energiaCtrl),
+              _campoValor('Água', aguaCtrl),
+              _campoValor('Material de Limpeza', matLimpezaCtrl),
+              _campoValor('Combustível', combustivelCtrl),
+              _campoValor('Funcionário', funcionarioCtrl),
+              _campoValor('Outros 1', outros1Ctrl),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 45,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor.withOpacity(0.8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: salvarOuAtualizar,
+                  child: Text(
+                    widget.item == null ? 'Salvar' : 'Atualizar',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
-              TextField(
-                controller: aplicativosCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Aplicativos'),
-              ),
-              TextField(
-                controller: energiaCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Energia'),
-              ),
-              TextField(
-                controller: aguaCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Água'),
-              ),
-              TextField(
-                controller: matLimpezaCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Material de Limpeza',
-                ),
-              ),
-              TextField(
-                controller: combustivelCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Combustível'),
-              ),
-              TextField(
-                controller: funcionarioCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Funcionário'),
-              ),
-              TextField(
-                controller: outros1Ctrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Outros 1'),
-              ),
-              TextField(
-                controller: outros2Ctrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Outros 2'),
-              ),
-              TextField(
-                controller: outros3Ctrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Outros 3'),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: salvarOuAtualizar,
-                child: Text(widget.item == null ? 'Salvar' : 'Atualizar'),
               ),
             ],
           ),

@@ -35,7 +35,6 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
       _insumosDisponiveis = insumos;
     });
 
-    // Depois de carregar insumos, carrega composição existente
     _carregarComposicaoExistente();
   }
 
@@ -81,17 +80,37 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: Text('Quantidade de ${insumo.nome}'),
-        content: TextField(
-          controller: _quantidadeCtrl,
-          keyboardType: TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(hintText: 'Digite a quantidade'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _quantidadeCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                hintText: 'Digite a quantidade',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Dica:\n'
+              '1 = Kg (ou 1Lt)\n'
+              '0.1 = 100g (ou 100ml)\n'
+              '0.01 = 10g (ou 10ml)',
+              style: TextStyle(fontSize: 12, color: Colors.black),
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.red)),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
             onPressed: () {
               final qtd = double.tryParse(_quantidadeCtrl.text) ?? 0;
               if (qtd <= 0) {
@@ -108,7 +127,7 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
               }
               Navigator.pop(context);
             },
-            child: const Text('Salvar'),
+            child: const Text('Salvar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -124,10 +143,8 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
   void _salvarComposicao() async {
     final db = DatabaseHelper.instance;
 
-    // Remove composições antigas
     await db.removerComposicaoPorProduto(widget.produtoId);
 
-    // Salva novas composições
     for (var item in _insumosSelecionados) {
       await db.inserirComposicao({
         'produto_id': widget.produtoId,
@@ -136,7 +153,6 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
       });
     }
 
-    // Retorna custo total para a tela de produto
     Navigator.pop(context, _custoTotal);
   }
 
@@ -145,13 +161,16 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
       context,
       MaterialPageRoute(builder: (_) => const InsumoScreen()),
     );
-    _carregarInsumos(); // Atualiza lista após cadastro
+    _carregarInsumos();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Composição do Produto')),
+      appBar: AppBar(
+        title: const Text('Composição do Produto'),
+        backgroundColor: Colors.blue,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -160,11 +179,17 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
             Row(
               children: [
                 const Expanded(
-                  child: Text('Escolha um insumo ou adicione um novo:'),
+                  child: Text(
+                    'Escolha um insumo ou adicione um novo:',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                 ),
                 TextButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('Novo'),
+                  icon: const Icon(Icons.add, color: Colors.blue),
+                  label: const Text(
+                    'Novo',
+                    style: TextStyle(color: Colors.blue),
+                  ),
                   onPressed: _abrirCadastroInsumo,
                 ),
               ],
@@ -179,19 +204,34 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                     (sel) => sel.insumo.id == insumo.id,
                   ))
                     return const SizedBox.shrink();
-                  return ListTile(
-                    title: Text(insumo.nome),
-                    subtitle: Text(
-                      'Valor unitário: R\$ ${insumo.valor?.toStringAsFixed(2) ?? '0.00'}',
+                  return Card(
+                    elevation: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: ListTile(
+                      title: Text(
+                        insumo.nome,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        'Valor unitário: R\$ ${insumo.valor?.toStringAsFixed(2) ?? '0.00'}',
+                      ),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                      onTap: () => _selecionarInsumo(insumo),
                     ),
-                    onTap: () => _selecionarInsumo(insumo),
                   );
                 },
               ),
             ),
             if (_insumosSelecionados.isNotEmpty) ...[
               const SizedBox(height: 16),
-              const Text('Insumos escolhidos:'),
+              const Text(
+                'Insumos escolhidos:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -199,8 +239,12 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                 children: _insumosSelecionados
                     .map(
                       (e) => Chip(
-                        label: Text('${e.insumo.nome} (${e.quantidade})'),
-                        deleteIcon: const Icon(Icons.close),
+                        backgroundColor: Colors.blue.shade50,
+                        label: Text(
+                          '${e.insumo.nome} (${e.quantidade})',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        deleteIcon: const Icon(Icons.close, color: Colors.red),
                         onDeleted: () => _removerInsumoPorId(e.insumo.id!),
                       ),
                     )
@@ -210,13 +254,25 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
             const SizedBox(height: 16),
             Text(
               'Custo Total: R\$ ${_custoTotal.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 16),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
             const SizedBox(height: 16),
             Center(
-              child: ElevatedButton(
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  minimumSize: const Size(double.infinity, 48),
+                ),
                 onPressed: _salvarComposicao,
-                child: const Text('Salvar Composição'),
+                icon: const Icon(Icons.save, color: Colors.white),
+                label: const Text(
+                  'Salvar Composição',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
               ),
             ),
           ],

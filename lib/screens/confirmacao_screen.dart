@@ -35,66 +35,48 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
 
   Future<void> _confirmarCodigo() async {
     final codigoDigitado = _codigoController.text.trim();
-    print("🔹 Código digitado: '$codigoDigitado'");
-
     if (codigoDigitado.isEmpty) {
       _mostrarAlerta("Insira o código");
-      print("⚠️ Código vazio");
       return;
     }
 
     final db = DatabaseHelper.instance;
-
-    // Buscar usuário pelo email
     final usuario = await db.buscarUsuarioPorEmail(widget.email);
-    print("🔹 Usuário encontrado no banco: $usuario");
-
     if (usuario == null) {
       _mostrarAlerta("Usuário não encontrado");
-      print("❌ Usuário não encontrado para email: ${widget.email}");
       return;
     }
 
-    // Debug: códigos
     final codigoCorreto = usuario['codigo_liberacao']?.toString() ?? '';
-    print("🔹 Código correto no banco: '$codigoCorreto'");
-
-    // Debug: datas
     final dataLiberacaoStr = usuario['data_liberacao']?.toString() ?? '';
-    print("🔹 Data de liberação no banco: '$dataLiberacaoStr'");
-
     DateTime agoraUtc = DateTime.now().toUtc();
-    print("🔹 Agora UTC: $agoraUtc");
 
     if (dataLiberacaoStr.isNotEmpty) {
       final expiraEmUtc = DateTime.parse(dataLiberacaoStr).toUtc();
-      print("🔹 Código expira em UTC: $expiraEmUtc");
-
       if (agoraUtc.isAfter(expiraEmUtc)) {
         _mostrarAlerta("O código expirou, solicite um novo");
-        print("❌ Código expirado");
         return;
-      } else {
-        print("✅ Código ainda válido");
       }
-    } else {
-      print("⚠️ Data de liberação vazia ou inválida");
     }
 
-    // Verifica se o código é igual ao cadastrado no banco
     if (codigoDigitado != codigoCorreto) {
       _mostrarAlerta("Código inválido");
-      print("❌ Código digitado não confere com o banco");
       return;
     }
 
-    print("✅ Código confirmado com sucesso, atualizando usuário");
-
-    // Atualiza confirmado = 1
     await db.atualizarUsuario({'id': usuario['id'], 'confirmado': 1});
-
-    // Redireciona para tela de login
     Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  void _logout(BuildContext context) {
+    Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
   }
 
   @override
@@ -102,7 +84,21 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Confirmação de Cadastro"),
-        automaticallyImplyLeading: false, // remove botão voltar
+        backgroundColor: Colors.blue,
+        automaticallyImplyLeading: false,
+        actions: [
+          TextButton.icon(
+            onPressed: () => _logout(context),
+            icon: const Icon(Icons.exit_to_app, color: Colors.white),
+            label: const Text(
+              "Sair",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -111,19 +107,35 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
             const Text(
               "Valor do serviço: R\$ 15,00\nForma de pagamento: PIX\nChave PIX: 123456789",
               style: TextStyle(fontSize: 18),
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             TextField(
               controller: _codigoController,
-              decoration: const InputDecoration(
-                labelText: "Insira o código recebido para liberar o App",
+              decoration: _inputDecoration(
+                "Insira o código recebido para liberar o App",
               ),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _confirmarCodigo,
-              child: const Text("Confirmar"),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _confirmarCodigo,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      Colors.lightBlue.shade200, // fundo azul claro
+                  foregroundColor: Colors.black, // texto preto
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  "Confirmar",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           ],
         ),
