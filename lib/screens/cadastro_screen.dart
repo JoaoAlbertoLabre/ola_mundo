@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'produto_screen.dart';
 import 'custo_fixo_screen.dart';
@@ -5,16 +6,132 @@ import 'custo_comercial_screen.dart';
 import 'faturamento_screen.dart';
 import 'lucro_screen.dart';
 import 'novo_usuario_screen.dart';
-import 'login_screen.dart'; // para voltar ao login após sair
+import 'login_screen.dart';
+import '../db/database_helper.dart';
+import 'package:ola_mundo/screens/confirmacao_screen.dart';
+import 'package:ola_mundo/utils/codigo_helper.dart';
+import 'package:ola_mundo/utils/email_helper.dart';
 
-class CadastroScreen extends StatelessWidget {
+class CadastroScreen extends StatefulWidget {
   const CadastroScreen({Key? key}) : super(key: key);
+
+  @override
+  State<CadastroScreen> createState() => _CadastroScreenState();
+}
+
+class _CadastroScreenState extends State<CadastroScreen> {
+  Timer? _verificadorLicenca;
+
+  @override
+  void initState() {
+    super.initState();
+    // Verifica imediatamente e depois a cada 10 minutos
+    _verificarLicenca();
+    _verificadorLicenca = Timer.periodic(
+      const Duration(minutes: 10),
+      (_) => _verificarLicenca(),
+    );
+  }
+
+  Future<void> _verificarLicenca() async {
+    final db = DatabaseHelper.instance;
+    final usuario = await db.buscarUltimaLicencaValida();
+    if (usuario == null) return;
+
+    final dataLiberacaoStr = usuario['data_liberacao']?.toString() ?? '';
+    if (dataLiberacaoStr.isEmpty) return;
+
+    final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
+    const int PRAZO_LICENCA_MINUTOS = 1; // Prazo de teste: 1 minuto
+    final expiraEmUtc = dataLiberacao.add(
+      Duration(minutes: PRAZO_LICENCA_MINUTOS),
+    );
+
+    final agoraUtc = DateTime.now().toUtc();
+
+    print("dataLiberacao: $dataLiberacao");
+    print("agoraUtc: $agoraUtc");
+    print("expiraEmUtc: $expiraEmUtc");
+
+    final duracaoRestante = expiraEmUtc.difference(agoraUtc);
+    if (duracaoRestante.isNegative) {
+      _mostrarAlertaRenovacao(usuario);
+    } else {
+      Future.delayed(duracaoRestante, () {
+        _mostrarAlertaRenovacao(usuario);
+      });
+    }
+  }
+
+  void _mostrarAlertaRenovacao(Map<String, dynamic> usuario) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text("Licença expirada"),
+        content: const Text(
+          "Sua licença expirou.\nValor da renovação: R\$ 15,00 por 30 dias.\nDeseja renovar a licença para continuar usando o app?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // Gerar código de liberação
+              final codigoLiberacao = CodigoHelper.gerarCodigo();
+
+              // Salvar código no DB
+              await CodigoHelper.salvarCodigo(
+                usuarioId: usuario['id'],
+                codigo: codigoLiberacao,
+              );
+
+              // Ir para a tela de confirmação
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConfirmacaoScreen(
+                    email: usuario['email'] ?? '',
+                    celular: usuario['celular'] ?? '',
+                    renovacao: true,
+                  ),
+                ),
+              );
+
+              // Enviar email para o administrador
+              await EmailHelper.enviarEmailAdmin(
+                nome: usuario['usuario'] ?? '',
+                email: usuario['email'] ?? '',
+                celular: usuario['celular'] ?? '',
+                codigoLiberacao: codigoLiberacao,
+              );
+            },
+            child: const Text("Sim"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text("Não"),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _logout(BuildContext context) {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => LoginScreen()),
     );
+  }
+
+  @override
+  void dispose() {
+    _verificadorLicenca?.cancel();
+    super.dispose();
   }
 
   @override

@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import '../db/database_helper.dart';
 import 'cadastro_screen.dart';
 import 'novo_usuario_screen.dart';
-import '../db/database_helper.dart';
+import 'confirmacao_screen.dart';
+import 'dart:async';
+import '../utils/codigo_helper.dart';
+import '../utils/email_helper.dart';
+
+const int PRAZO_EXPIRACAO_MINUTOS = 1; // 30 dias
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,23 +20,52 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  bool _exibirNovoUsuario = true; // controla se o botão deve aparecer
+  bool _exibirNovoUsuario = true;
 
   @override
   void initState() {
     super.initState();
     _verificarUsuariosExistentes();
+    _iniciarVerificacaoLicencaPeriodica();
+  }
+
+  void _iniciarVerificacaoLicencaPeriodica() {
+    Timer.periodic(const Duration(minutes: 10), (_) {
+      _verificarELimparUsuarioSeLicencaExpirada();
+    });
   }
 
   Future<void> _verificarUsuariosExistentes() async {
+    await _verificarELimparUsuarioSeLicencaExpirada();
     setState(() {
-      _exibirNovoUsuario = true; // botão sempre visível
+      _exibirNovoUsuario = true;
     });
-    print("🔹 Botão 'Novo Usuário' sempre visível");
+  }
+
+  Future<void> _verificarELimparUsuarioSeLicencaExpirada() async {
+    final db = DatabaseHelper.instance;
+    final usuario = await db.buscarUltimoUsuario();
+    if (usuario != null) {
+      final dataLiberacaoStr = usuario['data_liberacao']?.toString() ?? '';
+      if (dataLiberacaoStr.isNotEmpty) {
+        final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
+        final agoraUtc = DateTime.now().toUtc();
+        final expiraEmUtc = dataLiberacao.add(
+          Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
+        );
+
+        if (agoraUtc.isAfter(expiraEmUtc)) {
+          await db.removerUsuario(usuario['id']);
+          print("Usuário removido, licença expirou");
+        }
+      }
+    }
   }
 
   void _entrar() async {
-    final nomeDigitado = _idController.text.trim(); // pega o campo "ID Usuário"
+    print("🔹 _entrar chamado");
+    final db = DatabaseHelper.instance;
+    final nomeDigitado = _idController.text.trim();
     final senha = _passwordController.text.trim();
 
     if (nomeDigitado.isEmpty || senha.isEmpty) {
@@ -40,11 +75,8 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final db = DatabaseHelper.instance;
-
-    // Buscar usuário pelo nome
     final usuario = await db.buscarUsuarioPorNome(nomeDigitado);
-
+    print("🔹 Último usuário carregado: $usuario");
     if (usuario == null) {
       ScaffoldMessenger.of(
         context,
@@ -52,7 +84,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Verifica senha
     if (usuario['senha'] != senha) {
       ScaffoldMessenger.of(
         context,
@@ -60,7 +91,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Verifica se o usuário confirmou o código
     if (usuario['confirmado'] != 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Usuário ainda não confirmou o código")),
@@ -68,39 +98,197 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Verifica se a licença ainda está válida
-    final agoraUtc = DateTime.now().toUtc();
+    // Verifica se licença expirou
     final dataLiberacaoUtc = DateTime.parse(usuario['data_liberacao']).toUtc();
+    final agoraUtc = DateTime.now().toUtc();
     final expiraEmUtc = dataLiberacaoUtc.add(
       Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
     );
 
     if (agoraUtc.isAfter(expiraEmUtc)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Licença expirou, solicite novo cadastro"),
+      // Licença expirada → opção de renovação
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text("Licença expirada"),
+          content: const Text("Sua licença expirou. Deseja renovar a licença?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), // Fecha o app/dialog
+              child: const Text("Não"),
+            ),
+            TextButton(
+              onPressed: () async {
+                print("🟢 Botão SIM pressionado"); // <-- Primeiro print
+
+                // Gera novo código
+                final novoCodigo = CodigoHelper.gerarCodigo();
+                print("➡️ Novo código gerado para renovação: $novoCodigo");
+
+                // Cria um novo usuário no banco (linha nova)
+                final novoUsuarioId = await db.inserirUsuario({
+                  'usuario': usuario['usuario'],
+                  'senha': usuario['senha'],
+                  'email': usuario['email'] ?? '',
+                  'celular': usuario['celular'] ?? '',
+                  'codigo_liberacao': novoCodigo,
+                  'data_liberacao': DateTime.now().toIso8601String(),
+                  'confirmado': 0,
+                });
+                print("✅ Novo usuário criado com id: $novoUsuarioId");
+
+                Navigator.pop(context); // Fecha o diálogo
+                print("🟢 Diálogo fechado");
+                // Envia email para administrador
+                await EmailHelper.enviarEmailAdmin(
+                  nome: usuario['usuario'] ?? '',
+                  email: usuario['email'] ?? '',
+                  celular: usuario['celular'] ?? '',
+                  codigoLiberacao: novoCodigo,
+                );
+                print("📧 Email enviado com código: $novoCodigo");
+
+                // Navega para tela de confirmação
+                if (!mounted) return;
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ConfirmacaoScreen(
+                      email: usuario['email'] ?? '',
+                      celular: usuario['celular'] ?? '',
+                      renovacao: true,
+                    ),
+                  ),
+                );
+              },
+              child: const Text("Sim"),
+            ),
+          ],
         ),
       );
       return;
     }
 
-    // Se chegou aqui, usuário tem licença ativa e senha correta
-
-    // Login bem-sucedido → redireciona para tela principal
+    // Login permitido
+    if (!mounted) return;
+    print("🔹 Login permitido para ${usuario['usuario']}");
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const CadastroScreen()),
     );
   }
 
-  void _novoUsuario() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const NovoUsuarioScreen()),
-    ).then((_) {
-      // Atualiza a visibilidade do botão quando voltar da tela de cadastro
-      _verificarUsuariosExistentes();
-    });
+  void _novoUsuario() async {
+    final db = DatabaseHelper.instance;
+    final ultimoUsuario = await db.buscarUltimoUsuario();
+    print("🔍 buscarUltimoUsuario retornou: $ultimoUsuario");
+
+    if (ultimoUsuario != null) {
+      final dataLiberacaoStr =
+          ultimoUsuario['data_liberacao']?.toString() ?? '';
+      final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
+      final agora = DateTime.now().toUtc();
+      final expiraEmUtc = dataLiberacao.add(
+        Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
+      );
+
+      if (agora.isBefore(expiraEmUtc)) {
+        // Licença ainda válida
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("Licença ativa"),
+            content: Text(
+              "A licença atual é válida até ${expiraEmUtc.toLocal().toString().substring(0, 16)}.\n"
+              "Não é possível criar novo cadastro enquanto a licença estiver ativa.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+          ),
+        );
+        print("🔹 Licença ativa. Nenhum novo usuário criado.");
+        return;
+      } else {
+        // Licença expirada → mostra diálogo de renovação
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("Licença expirada"),
+            content: const Text("Deseja renovar a licença por mais 30 dias?"),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  print("🟢 Renovação recusada pelo usuário");
+                },
+                child: const Text("Não"),
+              ),
+              TextButton(
+                onPressed: () async {
+                  print("🟢 Botão SIM pressionado");
+
+                  final novoCodigo = CodigoHelper.gerarCodigo();
+                  print("➡️ Novo código gerado para renovação: $novoCodigo");
+
+                  final novoUsuarioId = await db.inserirUsuario({
+                    'usuario': ultimoUsuario['usuario'],
+                    'senha': ultimoUsuario['senha'],
+                    'email': ultimoUsuario['email'] ?? '',
+                    'celular': ultimoUsuario['celular'] ?? '',
+                    'codigo_liberacao': novoCodigo,
+                    'data_liberacao': DateTime.now().toIso8601String(),
+                    'confirmado': 0,
+                  });
+                  print("✅ Novo usuário criado com id: $novoUsuarioId");
+
+                  await EmailHelper.enviarEmailAdmin(
+                    nome: ultimoUsuario['usuario'] ?? '',
+                    email: ultimoUsuario['email'] ?? '',
+                    celular: ultimoUsuario['celular'] ?? '',
+                    codigoLiberacao: novoCodigo,
+                  );
+                  print("📧 Email enviado com código: $novoCodigo");
+
+                  Navigator.pop(context);
+                  print("🟢 Diálogo fechado");
+
+                  if (!mounted) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ConfirmacaoScreen(
+                        email: ultimoUsuario['email'] ?? '',
+                        celular: ultimoUsuario['celular'] ?? '',
+                        renovacao: true,
+                      ),
+                    ),
+                  );
+                  print("🔹 Navegando para ConfirmacaoScreen");
+                },
+                child: const Text("Sim"),
+              ),
+            ],
+          ),
+        );
+        print("🔹 Licença expirada. Mostrando diálogo de renovação.");
+        return;
+      }
+    } else {
+      // Nenhum usuário encontrado → cadastra o primeiro usuário
+      print("❌ Nenhum usuário encontrado. Criando primeiro usuário...");
+
+      // Aqui você deve abrir a tela de cadastro ou formulário
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => NovoUsuarioScreen()),
+      );
+    }
   }
 
   @override
@@ -113,7 +301,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo estilizada (exemplo com ícones matemáticos)
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -130,8 +317,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // Nome do app
               const Text(
                 "VENDO CERTO",
                 style: TextStyle(
@@ -142,8 +327,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-
-              // Campo ID Usuário
               TextField(
                 controller: _idController,
                 decoration: InputDecoration(
@@ -158,8 +341,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Campo Senha
               TextField(
                 controller: _passwordController,
                 obscureText: true,
@@ -175,8 +356,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 30),
-
-              // Botão Entrar
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -191,8 +370,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 15),
-
-              // Botão Novo Usuário
               if (_exibirNovoUsuario)
                 TextButton(
                   onPressed: _novoUsuario,

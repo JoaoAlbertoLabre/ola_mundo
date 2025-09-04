@@ -158,7 +158,7 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: label,
-          prefixText: '% ',
+          suffixText: '% ',
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(

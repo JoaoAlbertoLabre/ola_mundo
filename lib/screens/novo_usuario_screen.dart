@@ -5,7 +5,6 @@ import 'confirmacao_screen.dart';
 import '../utils/email_helper.dart';
 import '../utils/codigo_helper.dart';
 
-const int PRAZO_EXPIRACAO_MINUTOS = 43200; // 2 dias = 2880 minutos
 const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
 
 class NovoUsuarioScreen extends StatefulWidget {
@@ -32,52 +31,108 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   }
 
   Future<void> _cadastrarUsuario() async {
+    final db = DatabaseHelper.instance;
+
+    // Verifica se já existe um usuário cadastrado
+    final usuarioExistente = await db.buscarUltimoUsuario();
+    if (usuarioExistente != null) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text("Usuário já cadastrado"),
+          content: const Text(
+            "Já existe um usuário cadastrado neste aparelho.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+
+                // Gera código de liberação
+                final codigo = CodigoHelper.gerarCodigo();
+
+                // Salva no banco
+                await CodigoHelper.salvarCodigo(
+                  usuarioId: usuarioExistente['id'],
+                  codigo: codigo,
+                );
+
+                // Envia email para o administrador
+                await EmailHelper.enviarEmailAdmin(
+                  nome: usuarioExistente['usuario'] ?? '',
+                  email: usuarioExistente['email'] ?? '',
+                  celular: usuarioExistente['celular'] ?? '',
+                  codigoLiberacao: codigo,
+                );
+
+                // Navega para a tela de confirmação
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ConfirmacaoScreen(
+                      email: usuarioExistente['email'] ?? '',
+                      celular: usuarioExistente['celular'] ?? '',
+                      renovacao: true,
+                    ),
+                  ),
+                );
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (!_formKey.currentState!.validate()) return;
 
-    final db = DatabaseHelper.instance;
+    // Gerar código e salvar usuário
     final codigoLiberacao = CodigoHelper.gerarCodigo();
+    final dataLiberacao = DateTime.now().toUtc();
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ConfirmacaoScreen(
-          email: _emailController.text.trim(),
-          celular: _celularController.text.trim(),
-        ),
-      ),
-    );
+    await db.inserirUsuario({
+      'usuario': _usuarioController.text.trim(),
+      'senha': _senhaController.text.trim(),
+      'email': _emailController.text.trim(),
+      'celular': _celularController.text.trim(),
+      'codigo_liberacao': codigoLiberacao,
+      'confirmado': 0,
+      'data_liberacao': dataLiberacao.toIso8601String(),
+    });
 
+    // Enviar email ao administrador
     Future.microtask(() async {
-      await db.inserirUsuario({
-        'usuario': _usuarioController.text.trim(),
-        'senha': _senhaController.text.trim(),
-        'email': _emailController.text.trim(),
-        'celular': _celularController.text.trim(),
-        'codigo_liberacao': codigoLiberacao,
-        'confirmado': 0,
-        'data_liberacao': DateTime.now()
-            .add(const Duration(minutes: PRAZO_EXPIRACAO_MINUTOS))
-            .toIso8601String(),
-      });
-
-      await enviarEmailAdmin(
+      await EmailHelper.enviarEmailAdmin(
         nome: _usuarioController.text.trim(),
         email: _emailController.text.trim(),
         celular: _celularController.text.trim(),
         codigoLiberacao: codigoLiberacao,
       );
     });
+
+    // Vai para tela de confirmação
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConfirmacaoScreen(
+          email: _emailController.text.trim(),
+          celular: _celularController.text.trim(),
+          renovacao: false,
+        ),
+      ),
+    );
   }
 
   String? _validarEmail(String? value) {
-    if (value == null || value.isEmpty) return "Informe o e-mail";
+    if (value == null || value.isEmpty) return null; // não obrigatório
     final regex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
     if (!regex.hasMatch(value)) return "E-mail inválido";
     return null;
   }
 
   String? _validarCelular(String? value) {
-    if (value == null || value.isEmpty) return "Informe o celular";
+    if (value == null || value.isEmpty) return null; // não obrigatório
     final regex = RegExp(r'^[0-9]{10,11}$');
     if (!regex.hasMatch(value)) return "Celular inválido";
     return null;
@@ -104,25 +159,13 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
           controller: controller,
           obscureText: obscure,
           decoration: InputDecoration(
-            labelText: "$label*",
+            labelText: label,
             hintText: dica,
             prefixIcon: Icon(icon, color: primaryColor),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           ),
           validator: validator,
         ),
-        if (obscure)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text(
-              "*Obrigatório",
-              style: TextStyle(
-                color: Colors.red,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
         const SizedBox(height: 16),
       ],
     );
@@ -141,7 +184,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
         elevation: 2,
         actions: [
           TextButton.icon(
-            onPressed: () => exit(0), // fecha o app
+            onPressed: () => exit(0),
             icon: const Icon(Icons.exit_to_app, color: Colors.white),
             label: const Text(
               "Sair",
@@ -174,19 +217,19 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
               ),
               const SizedBox(height: 20),
               _campoTexto(
-                label: "Nome",
+                label: "Nome (login)*",
                 controller: _usuarioController,
                 validator: (value) => value!.isEmpty ? "Informe o nome" : null,
                 icon: Icons.person,
               ),
               _campoTexto(
-                label: "E-mail",
+                label: "E-mail (Opcional)",
                 controller: _emailController,
                 validator: _validarEmail,
                 icon: Icons.email,
               ),
               _campoTexto(
-                label: "Celular",
+                label: "Celular (Opcional)",
                 controller: _celularController,
                 validator: _validarCelular,
                 icon: Icons.phone,

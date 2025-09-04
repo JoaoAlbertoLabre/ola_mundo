@@ -70,6 +70,16 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
+    CREATE TABLE IF NOT EXISTS codigos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id INTEGER NOT NULL,
+      codigo TEXT NOT NULL,
+      data_criacao TEXT NOT NULL,
+      FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+    )
+  ''');
+
+    await db.execute('''
       CREATE TABLE IF NOT EXISTS produto (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL,
@@ -164,16 +174,21 @@ class DatabaseHelper {
   }
 
   //  =================== USUÁRIO ======================
+
   // Inserir o usuário (apenas 1 usuário)
   Future<int> inserirUsuario(Map<String, dynamic> usuario) async {
     final db = await database;
-    return await db.insert('usuarios', usuario);
+    return await db.insert(
+      'usuarios',
+      usuario,
+      //conflictAlgorithm: ConflictAlgorithm.replace, // substitui se id duplicado
+    );
   }
 
   // Buscar o usuário (retorna o único usuário do app)
   Future<Map<String, dynamic>?> buscarUsuario() async {
     final db = await database;
-    final res = await db.query('usuarios', limit: 1);
+    final res = await db.query('usuarios');
     if (res.isNotEmpty) return res.first;
     return null;
   }
@@ -181,12 +196,11 @@ class DatabaseHelper {
   // Atualizar usuário (para confirmar o cadastro ou alterar dados)
   Future<int> atualizarUsuario(Map<String, dynamic> usuario) async {
     final db = await database;
-    final id = usuario['id'];
     return await db.update(
       'usuarios',
       usuario,
       where: 'id = ?',
-      whereArgs: [id],
+      whereArgs: [usuario['id']],
     );
   }
 
@@ -205,7 +219,40 @@ class DatabaseHelper {
     return null;
   }
 
-  // DatabaseHelper.dart
+  Future<Map<String, dynamic>?> buscarUltimaLicencaValida() async {
+    final db = await database;
+    final resultado = await db.query(
+      'usuarios',
+      where: 'confirmado = 1',
+      orderBy: 'data_liberacao DESC',
+      limit: 1,
+    );
+    return resultado.isNotEmpty ? resultado.first : null;
+  }
+
+  // Remove um usuário pelo ID
+  Future<int> removerUsuario(int id) async {
+    final db = await database;
+    return await db.delete('usuarios', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Buscar usuário por celular
+  Future<Map<String, dynamic>?> buscarUsuarioPorCelular(String celular) async {
+    final db = await database;
+
+    final res = await db.query(
+      'usuarios',
+      where: 'celular = ?',
+      whereArgs: [celular],
+      limit: 1,
+    );
+
+    if (res.isNotEmpty) {
+      return res.first;
+    }
+    return null;
+  }
+
   Future<List<Map<String, dynamic>>> listarUsuarios() async {
     final db = await database;
     final res = await db.query('usuarios');
@@ -225,18 +272,14 @@ class DatabaseHelper {
 
   Future<Map<String, dynamic>?> buscarUltimoUsuario() async {
     final db = await database;
-
-    final resultado = await db.query(
+    final res = await db.query(
       'usuarios',
-      orderBy: 'id DESC', // ordena do maior para o menor
-      limit: 1, // pega apenas o último
+      where: 'confirmado = ?',
+      whereArgs: [0],
+      orderBy: 'id DESC',
+      limit: 1,
     );
-
-    if (resultado.isNotEmpty) {
-      return resultado.first;
-    } else {
-      return null; // nenhum usuário encontrado
-    }
+    return res.isNotEmpty ? res.first : null;
   }
 
   // ==================== CRUD PRODUTO ====================
