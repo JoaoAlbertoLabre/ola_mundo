@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:ola_mundo/models/produtos_model.dart';
+import 'package:ola_mundo/utils/codigo_helper.dart';
+import 'package:ola_mundo/screens/login_screen.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -627,5 +629,62 @@ class DatabaseHelper {
     return result.isNotEmpty
         ? (result.first['percentual'] as num).toDouble()
         : 0.0;
+  }
+
+  // ==================== NOVA LÓGICA DE LICENÇA ====================
+
+  // Verifica se a licença do usuário expirou
+  Future<bool> isLicencaExpirada(Map<String, dynamic>? usuario) async {
+    if (usuario == null) return true;
+
+    final dataLiberacao = DateTime.parse(usuario['data_liberacao']);
+    final dataExpiracao = dataLiberacao.add(
+      Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
+    );
+
+    return DateTime.now().isAfter(dataExpiracao);
+  }
+
+  // Reseta um usuário expirado: salva os dados temporariamente, limpa a tabela e cria um usuário novo
+  Future<Map<String, dynamic>> resetarUsuarioExpirado(
+    Map<String, dynamic> usuarioAntigo,
+  ) async {
+    final db = await database;
+
+    // Salva os dados antigos temporariamente
+    final dadosTemp = {
+      'usuario': usuarioAntigo['usuario'],
+      'senha': usuarioAntigo['senha'],
+      'email': usuarioAntigo['email'],
+      'celular': usuarioAntigo['celular'],
+    };
+
+    // Limpa tabela de usuários
+    await db.delete('usuarios');
+
+    // Gera novo código de liberação
+    final novoCodigo = CodigoHelper.gerarCodigo();
+
+    // Cria novo usuário com os dados antigos
+    final novoUsuario = {
+      'usuario': dadosTemp['usuario'],
+      'senha': dadosTemp['senha'],
+      'email': dadosTemp['email'],
+      'celular': dadosTemp['celular'],
+      'codigo_liberacao': novoCodigo,
+      'data_liberacao': DateTime.now().toUtc().toIso8601String(),
+      'confirmado': 0,
+    };
+
+    // Insere novo usuário no banco
+    await inserirUsuario(novoUsuario);
+
+    return novoUsuario;
+  }
+
+  Future<void> limparUsuarios() async {
+    final dbClient = await database;
+    await dbClient.delete('usuarios'); // deleta todos os registros
+    print("🔹 Tabela 'usuarios' limpa via limparUsuarios()");
   }
 }

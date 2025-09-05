@@ -7,7 +7,7 @@ import 'dart:async';
 import '../utils/codigo_helper.dart';
 import '../utils/email_helper.dart';
 
-const int PRAZO_EXPIRACAO_MINUTOS = 1; // 30 dias
+const int PRAZO_EXPIRACAO_MINUTOS = 1; // licença em minutos
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -30,8 +30,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _iniciarVerificacaoLicencaPeriodica() {
-    Timer.periodic(const Duration(minutes: 10), (_) {
-      _verificarELimparUsuarioSeLicencaExpirada();
+    Timer.periodic(const Duration(minutes: 10), (_) async {
+      await _verificarELimparUsuarioSeLicencaExpirada();
     });
   }
 
@@ -45,25 +45,17 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _verificarELimparUsuarioSeLicencaExpirada() async {
     final db = DatabaseHelper.instance;
     final usuario = await db.buscarUltimoUsuario();
-    if (usuario != null) {
-      final dataLiberacaoStr = usuario['data_liberacao']?.toString() ?? '';
-      if (dataLiberacaoStr.isNotEmpty) {
-        final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
-        final agoraUtc = DateTime.now().toUtc();
-        final expiraEmUtc = dataLiberacao.add(
-          Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
-        );
 
-        if (agoraUtc.isAfter(expiraEmUtc)) {
-          await db.removerUsuario(usuario['id']);
-          print("Usuário removido, licença expirou");
-        }
+    if (usuario != null) {
+      final expirada = await db.isLicencaExpirada(usuario);
+      if (expirada) {
+        print("Licença expirada. Resetando usuário...");
+        await db.resetarUsuarioExpirado(usuario);
       }
     }
   }
 
   void _entrar() async {
-    print("🔹 _entrar chamado");
     final db = DatabaseHelper.instance;
     final nomeDigitado = _idController.text.trim();
     final senha = _passwordController.text.trim();
@@ -76,7 +68,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final usuario = await db.buscarUsuarioPorNome(nomeDigitado);
-    print("🔹 Último usuário carregado: $usuario");
     if (usuario == null) {
       ScaffoldMessenger.of(
         context,
@@ -99,14 +90,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     // Verifica se licença expirou
-    final dataLiberacaoUtc = DateTime.parse(usuario['data_liberacao']).toUtc();
-    final agoraUtc = DateTime.now().toUtc();
-    final expiraEmUtc = dataLiberacaoUtc.add(
-      Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
-    );
-
-    if (agoraUtc.isAfter(expiraEmUtc)) {
-      // Licença expirada → opção de renovação
+    final expirada = await db.isLicencaExpirada(usuario);
+    if (expirada) {
       if (!mounted) return;
       showDialog(
         context: context,
@@ -116,48 +101,27 @@ class _LoginScreenState extends State<LoginScreen> {
           content: const Text("Sua licença expirou. Deseja renovar a licença?"),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context), // Fecha o app/dialog
+              onPressed: () => Navigator.pop(context),
               child: const Text("Não"),
             ),
             TextButton(
               onPressed: () async {
-                print("🟢 Botão SIM pressionado"); // <-- Primeiro print
+                // Reseta usuário e gera novo código
+                final novoUsuario = await db.resetarUsuarioExpirado(usuario);
+                Navigator.pop(context);
 
-                // Gera novo código
-                final novoCodigo = CodigoHelper.gerarCodigo();
-                print("➡️ Novo código gerado para renovação: $novoCodigo");
-
-                // Cria um novo usuário no banco (linha nova)
-                final novoUsuarioId = await db.inserirUsuario({
-                  'usuario': usuario['usuario'],
-                  'senha': usuario['senha'],
-                  'email': usuario['email'] ?? '',
-                  'celular': usuario['celular'] ?? '',
-                  'codigo_liberacao': novoCodigo,
-                  'data_liberacao': DateTime.now().toIso8601String(),
-                  'confirmado': 0,
-                });
-                print("✅ Novo usuário criado com id: $novoUsuarioId");
-
-                Navigator.pop(context); // Fecha o diálogo
-                print("🟢 Diálogo fechado");
-                // Envia email para administrador
                 await EmailHelper.enviarEmailAdmin(
-                  nome: usuario['usuario'] ?? '',
-                  email: usuario['email'] ?? '',
-                  celular: usuario['celular'] ?? '',
-                  codigoLiberacao: novoCodigo,
+                  nome: novoUsuario['usuario'] ?? '',
+                  email: novoUsuario['email'] ?? '',
+                  celular: novoUsuario['celular'] ?? '',
+                  codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
                 );
-                print("📧 Email enviado com código: $novoCodigo");
 
-                // Navega para tela de confirmação
                 if (!mounted) return;
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ConfirmacaoScreen(
-                      usuario: usuario!,
-                    ), // ou ultimoUsuario!
+                    builder: (_) => ConfirmacaoScreen(usuario: novoUsuario),
                   ),
                 );
               },
@@ -171,7 +135,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // Login permitido
     if (!mounted) return;
-    print("🔹 Login permitido para ${usuario['usuario']}");
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const CadastroScreen()),
@@ -181,25 +144,17 @@ class _LoginScreenState extends State<LoginScreen> {
   void _novoUsuario() async {
     final db = DatabaseHelper.instance;
     final ultimoUsuario = await db.buscarUltimoUsuario();
-    print("🔍 buscarUltimoUsuario retornou: $ultimoUsuario");
 
     if (ultimoUsuario != null) {
-      final dataLiberacaoStr =
-          ultimoUsuario['data_liberacao']?.toString() ?? '';
-      final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
-      final agora = DateTime.now().toUtc();
-      final expiraEmUtc = dataLiberacao.add(
-        Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
-      );
-
-      if (agora.isBefore(expiraEmUtc)) {
+      final expirada = await db.isLicencaExpirada(ultimoUsuario);
+      if (!expirada) {
         // Licença ainda válida
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text("Licença ativa"),
             content: Text(
-              "A licença atual é válida até ${expiraEmUtc.toLocal().toString().substring(0, 16)}.\n"
+              "A licença atual é válida até ${DateTime.parse(ultimoUsuario['data_liberacao']).add(Duration(minutes: PRAZO_EXPIRACAO_MINUTOS)).toLocal().toString().substring(0, 16)}.\n"
               "Não é possível criar novo cadastro enquanto a licença estiver ativa.",
             ),
             actions: [
@@ -210,80 +165,15 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
         );
-        print("🔹 Licença ativa. Nenhum novo usuário criado.");
-        return;
-      } else {
-        // Licença expirada → mostra diálogo de renovação
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text("Licença expirada"),
-            content: const Text("Deseja renovar a licença por mais 30 dias?"),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  print("🟢 Renovação recusada pelo usuário");
-                },
-                child: const Text("Não"),
-              ),
-              TextButton(
-                onPressed: () async {
-                  print("🟢 Botão SIM pressionado");
-
-                  final novoCodigo = CodigoHelper.gerarCodigo();
-                  print("➡️ Novo código gerado para renovação: $novoCodigo");
-
-                  final novoUsuarioId = await db.inserirUsuario({
-                    'usuario': ultimoUsuario['usuario'],
-                    'senha': ultimoUsuario['senha'],
-                    'email': ultimoUsuario['email'] ?? '',
-                    'celular': ultimoUsuario['celular'] ?? '',
-                    'codigo_liberacao': novoCodigo,
-                    'data_liberacao': DateTime.now().toIso8601String(),
-                    'confirmado': 0,
-                  });
-                  print("✅ Novo usuário criado com id: $novoUsuarioId");
-
-                  await EmailHelper.enviarEmailAdmin(
-                    nome: ultimoUsuario['usuario'] ?? '',
-                    email: ultimoUsuario['email'] ?? '',
-                    celular: ultimoUsuario['celular'] ?? '',
-                    codigoLiberacao: novoCodigo,
-                  );
-                  print("📧 Email enviado com código: $novoCodigo");
-
-                  Navigator.pop(context);
-                  print("🟢 Diálogo fechado");
-
-                  if (!mounted) return;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ConfirmacaoScreen(usuario: ultimoUsuario),
-                    ),
-                  );
-
-                  print("🔹 Navegando para ConfirmacaoScreen");
-                },
-                child: const Text("Sim"),
-              ),
-            ],
-          ),
-        );
-        print("🔹 Licença expirada. Mostrando diálogo de renovação.");
         return;
       }
-    } else {
-      // Nenhum usuário encontrado → cadastra o primeiro usuário
-      print("❌ Nenhum usuário encontrado. Criando primeiro usuário...");
-
-      // Aqui você deve abrir a tela de cadastro ou formulário
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => NovoUsuarioScreen()),
-      );
     }
+
+    // Nenhum usuário ou licença expirada → criar novo usuário
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => NovoUsuarioScreen()),
+    );
   }
 
   @override

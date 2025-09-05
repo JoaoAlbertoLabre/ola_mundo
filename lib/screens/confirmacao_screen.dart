@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import 'login_screen.dart';
+import '../utils/codigo_helper.dart';
+import '../utils/email_helper.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
+const int PRAZO_EXPIRACAO_MINUTOS = 1; // 1 dia = 1440 minutos
 
 class ConfirmacaoScreen extends StatefulWidget {
-  final Map<String, dynamic> usuario; // usuário atualizado passado direto
+  final Map<String, dynamic> usuario;
   final bool renovacao;
 
   const ConfirmacaoScreen({
@@ -30,6 +33,9 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     super.initState();
     usuarioAtual = widget.usuario;
     isRenovacao = widget.renovacao;
+    print("🔹 ConfirmacaoScreen iniciada");
+    print("🔹 Usuário passado: $usuarioAtual");
+    print("🔹 Renovação: $isRenovacao");
   }
 
   @override
@@ -41,42 +47,30 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
   Future<void> _confirmarCodigo() async {
     print("🔹 _confirmarCodigo chamado");
 
-    // Busca sempre a versão mais recente do usuário no DB
+    // 1️⃣ Buscar usuário mais recente no DB
     final usuarioDb = await db.buscarUltimoUsuario();
-    print("🔹 Usuario mais recente do DB: $usuarioDb");
-
     if (usuarioDb == null) {
-      print("❌ Nenhum usuário encontrado no DB ao confirmar.");
+      print("❌ Nenhum usuário encontrado no DB");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Nenhum usuário encontrado.")),
       );
       return;
     }
 
-    // Atualiza o estado local para refletir o DB
-    setState(() {
-      usuarioAtual = usuarioDb;
-    });
+    setState(() => usuarioAtual = usuarioDb);
 
-    // Extrai os códigos raw do DB (antes de normalizar)
+    // 2️⃣ Normalizar códigos
     String codigoLiberacao = (usuarioDb['codigo_liberacao'] ?? '').toString();
-    String codigoRenovacao = (usuarioDb['codigo_renovacao'] ?? '').toString();
-
-    // Determina se é renovação
-    bool isRenovacaoAtual = codigoRenovacao.isNotEmpty;
-    print("🔹 isRenovacao (flag atual): $isRenovacaoAtual");
-
-    // Normalização
     String normalize(String s) => s
         .replaceAll(RegExp(r'\s+'), '')
         .replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
+    final codigoDigitado = normalize(_codigoController.text);
     codigoLiberacao = normalize(codigoLiberacao);
-    codigoRenovacao = normalize(codigoRenovacao);
-    String codigoDigitado = normalize(_codigoController.text);
-    print("🔹 Código digitado normalizado: '$codigoDigitado'");
-    print("🔹 codigoLiberacao normalizado: '$codigoLiberacao'");
-    print("🔹 codigoRenovacao normalizado: '$codigoRenovacao'");
 
+    print("🔹 Código digitado: '$codigoDigitado'");
+    print("🔹 Código liberacao DB: '$codigoLiberacao'");
+
+    // 3️⃣ Validação do código
     if (codigoDigitado.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Informe o código recebido.")),
@@ -84,38 +78,22 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
       return;
     }
 
-    // Validação do código
-    bool codigoValido = false;
-    if (!isRenovacaoAtual && codigoDigitado == codigoLiberacao) {
-      codigoValido = true;
-      print("✅ Código válido (tipo: liberacao)");
-    } else if (isRenovacaoAtual && codigoDigitado == codigoRenovacao) {
-      codigoValido = true;
-      print("✅ Código válido (tipo: renovacao)");
-    }
+    if (codigoDigitado == codigoLiberacao) {
+      print("✅ Código válido (tipo: liberação)");
 
-    if (codigoValido) {
-      final updateData = {
+      // Atualiza DB com confirmação e nova data de liberação
+      await db.atualizarUsuario({
         'id': usuarioAtual['id'],
         'confirmado': 1,
         'data_liberacao': DateTime.now().toIso8601String(),
-      };
+      });
 
-      // Se for renovação, limpa o código de renovação
-      if (isRenovacaoAtual) {
-        updateData['codigo_renovacao'] = null;
-      }
-
-      print("🔹 Atualizando DB com: $updateData");
-      await db.atualizarUsuario(updateData);
-      print("🔹 Atualização concluída no DB");
-
-      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Código confirmado!")));
 
-      // Volta para login
+      // Volta para Login
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -128,6 +106,121 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     }
   }
 
+  // ====================== FUNÇÃO DE RENOVAÇÃO ======================
+  Future<void> renovarLicenca(Map<String, dynamic> usuario) async {
+    print("🔹 Licença expirada. Iniciando renovação para cliente...");
+
+    // 1️⃣ Salvar dados temporários
+    final dadosTemp = {
+      'usuario': usuario['usuario'],
+      'senha': usuario['senha'],
+      'email': usuario['email'],
+      'celular': usuario['celular'],
+    };
+    print("🔹 Dados temporários salvos: $dadosTemp");
+
+    // 2️⃣ Limpar toda a tabela de usuários
+    await db.limparUsuarios(); // precisa existir no DatabaseHelper
+    print("🔹 Tabela de usuários limpa.");
+
+    // 3️⃣ Perguntar ao cliente se deseja renovar
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text("Licença expirada"),
+        content: const Text(
+          "Deseja renovar sua licença e continuar usando o aplicativo?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              print("🟢 Renovação recusada pelo usuário");
+            },
+            child: const Text("Não"),
+          ),
+          TextButton(
+            onPressed: () async {
+              print("🟢 Renovação aceita pelo usuário");
+
+              // 4️⃣ Criar novo código de liberação
+              final novoCodigo = CodigoHelper.gerarCodigo();
+              print("➡️ Novo código gerado: $novoCodigo");
+
+              // 5️⃣ Criar novo usuário como se fosse o primeiro cadastro
+              final novoUsuario = {
+                'usuario': dadosTemp['usuario'],
+                'senha': dadosTemp['senha'],
+                'email': dadosTemp['email'],
+                'celular': dadosTemp['celular'],
+                'codigo_liberacao': novoCodigo,
+                'data_liberacao': DateTime.now().toIso8601String(),
+                'confirmado': 0,
+              };
+
+              await db.inserirUsuario(novoUsuario);
+              print("✅ Novo usuário criado no DB: $novoUsuario");
+
+              // 6️⃣ Enviar email para o administrador
+              await EmailHelper.enviarEmailAdmin(
+                nome: dadosTemp['usuario'] ?? '',
+                email: dadosTemp['email'] ?? '',
+                celular: dadosTemp['celular'] ?? '',
+                codigoLiberacao: novoCodigo,
+              );
+              print("📧 Email enviado com código: $novoCodigo");
+
+              Navigator.pop(context); // fecha o diálogo
+
+              // 7️⃣ Navegar para tela de confirmação novamente
+              if (!mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConfirmacaoScreen(usuario: novoUsuario),
+                ),
+              );
+            },
+            child: const Text("Sim"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPixInfo() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: primaryColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            "LICENÇA NOVA - Validade 30 dias:",
+            style: TextStyle(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 12),
+          Text(
+            "💳 Dados para PIX:",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Text("Valor: 15,00"),
+          Text("Chave: 123.456.789-00"),
+          Text("Banco: 000 - Nome do Banco"),
+          Text("Favorecido: Empresa X"),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -136,15 +229,8 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
         backgroundColor: primaryColor,
         centerTitle: true,
       ),
-      body: Container(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, primaryColor.withOpacity(0.05)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -168,34 +254,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: primaryColor),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "LIÇENCA NOVA - Validade 30 dias:",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    "💳 Dados para PIX:",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 8),
-                  Text("Valor: 15,00"),
-                  Text("Chave: 123.456.789-00"),
-                  Text("Banco: 000 - Nome do Banco"),
-                  Text("Favorecido: Empresa X"),
-                ],
-              ),
-            ),
+            _buildPixInfo(),
             const SizedBox(height: 24),
             TextField(
               controller: _codigoController,
@@ -212,10 +271,6 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
                   horizontal: 20,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
                   borderSide: BorderSide.none,
                 ),
