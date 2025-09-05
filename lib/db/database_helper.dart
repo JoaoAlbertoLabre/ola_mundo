@@ -59,13 +59,13 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario TEXT NOT NULL,
-        senha TEXT NOT NULL,
-        email TEXT NOT NULL,
-        celular TEXT NOT NULL,
+        usuario TEXT,
+        senha TEXT,
+        email TEXT,
+        celular TEXT,
         codigo_liberacao TEXT,
         data_liberacao TEXT,
-        confirmado INTEGER DEFAULT 0
+        confirmado INTEGER
       )
     ''');
 
@@ -174,6 +174,18 @@ class DatabaseHelper {
   }
 
   //  =================== USUÁRIO ======================
+  Future<Map<String, dynamic>?> buscarUsuarioPorId(int id) async {
+    final db = await database;
+    final resultado = await db.query(
+      'usuarios',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (resultado.isNotEmpty) {
+      return resultado.first;
+    }
+    return null;
+  }
 
   // Inserir o usuário (apenas 1 usuário)
   Future<int> inserirUsuario(Map<String, dynamic> usuario) async {
@@ -195,13 +207,19 @@ class DatabaseHelper {
 
   // Atualizar usuário (para confirmar o cadastro ou alterar dados)
   Future<int> atualizarUsuario(Map<String, dynamic> usuario) async {
-    final db = await database;
+    final db = await instance.database;
     return await db.update(
       'usuarios',
       usuario,
       where: 'id = ?',
       whereArgs: [usuario['id']],
     );
+  }
+
+  Future<Map<String, dynamic>?> buscarUltimoUsuario() async {
+    final db = await instance.database;
+    final res = await db.query('usuarios', orderBy: 'id DESC', limit: 1);
+    return res.isNotEmpty ? res.first : null;
   }
 
   // Busca usuário pelo email
@@ -270,17 +288,7 @@ class DatabaseHelper {
     return res.isNotEmpty ? res.first : null;
   }
 
-  Future<Map<String, dynamic>?> buscarUltimoUsuario() async {
-    final db = await database;
-    final res = await db.query(
-      'usuarios',
-      where: 'confirmado = ?',
-      whereArgs: [0],
-      orderBy: 'id DESC',
-      limit: 1,
-    );
-    return res.isNotEmpty ? res.first : null;
-  }
+  // ================-Nova Logica+++++++++++++++
 
   // ==================== CRUD PRODUTO ====================
   Future<int> inserirProduto(Map<String, dynamic> row) async {

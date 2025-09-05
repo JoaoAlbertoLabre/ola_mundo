@@ -5,7 +5,6 @@ import 'custo_fixo_screen.dart';
 import 'custo_comercial_screen.dart';
 import 'faturamento_screen.dart';
 import 'lucro_screen.dart';
-import 'novo_usuario_screen.dart';
 import 'login_screen.dart';
 import '../db/database_helper.dart';
 import 'package:ola_mundo/screens/confirmacao_screen.dart';
@@ -93,8 +92,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => ConfirmacaoScreen(
-                    email: usuario['email'] ?? '',
-                    celular: usuario['celular'] ?? '',
+                    usuario: usuario, // passa o Map completo
                     renovacao: true,
                   ),
                 ),

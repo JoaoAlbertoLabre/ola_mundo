@@ -2,17 +2,15 @@ import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import 'login_screen.dart';
 
-const Color primaryColor = Color(0xFF81D4FA); // mesma cor do projeto
+const Color primaryColor = Color(0xFF81D4FA);
 
 class ConfirmacaoScreen extends StatefulWidget {
-  final String email;
-  final String celular;
+  final Map<String, dynamic> usuario; // usuário atualizado passado direto
   final bool renovacao;
 
   const ConfirmacaoScreen({
     Key? key,
-    required this.email,
-    required this.celular,
+    required this.usuario,
     this.renovacao = false,
   }) : super(key: key);
 
@@ -24,49 +22,60 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
   final TextEditingController _codigoController = TextEditingController();
   final db = DatabaseHelper.instance;
 
+  late Map<String, dynamic> usuarioAtual;
+  late bool isRenovacao;
+
+  @override
+  void initState() {
+    super.initState();
+    usuarioAtual = widget.usuario;
+    isRenovacao = widget.renovacao;
+  }
+
   @override
   void dispose() {
     _codigoController.dispose();
     super.dispose();
   }
 
-  Future<void> _imprimirTodosUsuarios() async {
-    final db = DatabaseHelper.instance;
-    final todosUsuarios = await db.listarUsuarios(); // ou função equivalente
-    print("🔹 Todos os usuários no DB:");
-    for (var u in todosUsuarios) {
-      print(u);
-    }
-  }
-
   Future<void> _confirmarCodigo() async {
     print("🔹 _confirmarCodigo chamado");
 
-    // Debug: imprime todos os usuários
-    await _imprimirTodosUsuarios();
+    // Busca sempre a versão mais recente do usuário no DB
+    final usuarioDb = await db.buscarUltimoUsuario();
+    print("🔹 Usuario mais recente do DB: $usuarioDb");
 
-    final usuario = await db.buscarUltimoUsuario();
-    print("🔹 Usuário carregado no ConfirmacaoScreen: $usuario");
-
-    if (usuario == null) {
-      print("❌ Nenhum usuário encontrado");
+    if (usuarioDb == null) {
+      print("❌ Nenhum usuário encontrado no DB ao confirmar.");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Nenhum usuário encontrado.")),
       );
       return;
     }
 
-    String codigoDb = (usuario['codigo_liberacao'] ?? '').toString();
-    String codigoDigitado = _codigoController.text;
+    // Atualiza o estado local para refletir o DB
+    setState(() {
+      usuarioAtual = usuarioDb;
+    });
+
+    // Extrai os códigos raw do DB (antes de normalizar)
+    String codigoLiberacao = (usuarioDb['codigo_liberacao'] ?? '').toString();
+    String codigoRenovacao = (usuarioDb['codigo_renovacao'] ?? '').toString();
+
+    // Determina se é renovação
+    bool isRenovacaoAtual = codigoRenovacao.isNotEmpty;
+    print("🔹 isRenovacao (flag atual): $isRenovacaoAtual");
 
     // Normalização
     String normalize(String s) => s
         .replaceAll(RegExp(r'\s+'), '')
         .replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
-    codigoDb = normalize(codigoDb);
-    codigoDigitado = normalize(codigoDigitado);
-
-    print("🔹 Código digitado: $codigoDigitado, Código no DB: $codigoDb");
+    codigoLiberacao = normalize(codigoLiberacao);
+    codigoRenovacao = normalize(codigoRenovacao);
+    String codigoDigitado = normalize(_codigoController.text);
+    print("🔹 Código digitado normalizado: '$codigoDigitado'");
+    print("🔹 codigoLiberacao normalizado: '$codigoLiberacao'");
+    print("🔹 codigoRenovacao normalizado: '$codigoRenovacao'");
 
     if (codigoDigitado.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -75,22 +84,38 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
       return;
     }
 
-    if (codigoDigitado == codigoDb) {
-      print("✅ Código válido");
+    // Validação do código
+    bool codigoValido = false;
+    if (!isRenovacaoAtual && codigoDigitado == codigoLiberacao) {
+      codigoValido = true;
+      print("✅ Código válido (tipo: liberacao)");
+    } else if (isRenovacaoAtual && codigoDigitado == codigoRenovacao) {
+      codigoValido = true;
+      print("✅ Código válido (tipo: renovacao)");
+    }
 
-      // Atualiza o usuário: confirmado = 1
-      await db.atualizarUsuario({
-        'id': usuario['id'],
+    if (codigoValido) {
+      final updateData = {
+        'id': usuarioAtual['id'],
         'confirmado': 1,
         'data_liberacao': DateTime.now().toIso8601String(),
-      });
+      };
+
+      // Se for renovação, limpa o código de renovação
+      if (isRenovacaoAtual) {
+        updateData['codigo_renovacao'] = null;
+      }
+
+      print("🔹 Atualizando DB com: $updateData");
+      await db.atualizarUsuario(updateData);
+      print("🔹 Atualização concluída no DB");
 
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Código confirmado!")));
 
-      print("🔹 Navegando de volta para LoginScreen");
+      // Volta para login
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -107,7 +132,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.renovacao ? "Renovar Licença" : "Confirmação"),
+        title: Text(isRenovacao ? "Renovar Licença" : "Confirmação"),
         backgroundColor: primaryColor,
         centerTitle: true,
       ),
@@ -125,9 +150,8 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
           children: [
             const Icon(Icons.verified_user, size: 80, color: primaryColor),
             const SizedBox(height: 20),
-
-            if (widget.renovacao) ...[
-              Text(
+            if (isRenovacao) ...[
+              const Text(
                 "Nova licença, válida por 30 dias",
                 style: TextStyle(
                   fontSize: 18,
@@ -136,15 +160,14 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 "Faça pagamento via PIX e aguarde o administrador liberar o código.",
                 style: TextStyle(fontSize: 16, color: Colors.black87),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
             ],
-
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -160,7 +183,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 12), // cria espaço entre os textos
+                  SizedBox(height: 12),
                   Text(
                     "💳 Dados para PIX:",
                     style: TextStyle(fontWeight: FontWeight.bold),
@@ -173,7 +196,6 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
             TextField(
               controller: _codigoController,
@@ -199,15 +221,16 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide(color: Colors.blueAccent, width: 2),
+                  borderSide: const BorderSide(
+                    color: Colors.blueAccent,
+                    width: 2,
+                  ),
                 ),
-                suffixIcon: Icon(Icons.vpn_key, color: Colors.blueAccent),
+                suffixIcon: const Icon(Icons.vpn_key, color: Colors.blueAccent),
               ),
-
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.text,
             ),
             const SizedBox(height: 20),
-
             SizedBox(
               height: 50,
               child: ElevatedButton(

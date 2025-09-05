@@ -156,10 +156,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => ConfirmacaoScreen(
-                      email: usuario['email'] ?? '',
-                      celular: usuario['celular'] ?? '',
-                      renovacao: true,
-                    ),
+                      usuario: usuario!,
+                    ), // ou ultimoUsuario!
                   ),
                 );
               },
@@ -259,16 +257,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   print("🟢 Diálogo fechado");
 
                   if (!mounted) return;
-                  Navigator.pushReplacement(
+                  Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ConfirmacaoScreen(
-                        email: ultimoUsuario['email'] ?? '',
-                        celular: ultimoUsuario['celular'] ?? '',
-                        renovacao: true,
-                      ),
+                      builder: (_) => ConfirmacaoScreen(usuario: ultimoUsuario),
                     ),
                   );
+
                   print("🔹 Navegando para ConfirmacaoScreen");
                 },
                 child: const Text("Sim"),

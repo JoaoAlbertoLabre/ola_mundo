@@ -5,7 +5,7 @@ import 'confirmacao_screen.dart';
 import '../utils/email_helper.dart';
 import '../utils/codigo_helper.dart';
 
-const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
+const Color primaryColor = Color(0xFF81D4FA);
 
 class NovoUsuarioScreen extends StatefulWidget {
   const NovoUsuarioScreen({super.key});
@@ -21,6 +21,9 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _celularController = TextEditingController();
 
+  // 🔹 instância única do DB
+  final db = DatabaseHelper.instance;
+
   @override
   void dispose() {
     _usuarioController.dispose();
@@ -31,64 +34,11 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   }
 
   Future<void> _cadastrarUsuario() async {
-    final db = DatabaseHelper.instance;
-
-    // Verifica se já existe um usuário cadastrado
-    final usuarioExistente = await db.buscarUltimoUsuario();
-    if (usuarioExistente != null) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text("Usuário já cadastrado"),
-          content: const Text(
-            "Já existe um usuário cadastrado neste aparelho.",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-
-                // Gera código de liberação
-                final codigo = CodigoHelper.gerarCodigo();
-
-                // Salva no banco
-                await CodigoHelper.salvarCodigo(
-                  usuarioId: usuarioExistente['id'],
-                  codigo: codigo,
-                );
-
-                // Envia email para o administrador
-                await EmailHelper.enviarEmailAdmin(
-                  nome: usuarioExistente['usuario'] ?? '',
-                  email: usuarioExistente['email'] ?? '',
-                  celular: usuarioExistente['celular'] ?? '',
-                  codigoLiberacao: codigo,
-                );
-
-                // Navega para a tela de confirmação
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ConfirmacaoScreen(
-                      email: usuarioExistente['email'] ?? '',
-                      celular: usuarioExistente['celular'] ?? '',
-                      renovacao: true,
-                    ),
-                  ),
-                );
-              },
-              child: const Text("OK"),
-            ),
-          ],
-        ),
-      );
-    }
-
     if (!_formKey.currentState!.validate()) return;
 
-    // Gerar código e salvar usuário
+    // Gera código e salva usuário
     final codigoLiberacao = CodigoHelper.gerarCodigo();
+    print("➡️ Código gerado: $codigoLiberacao");
     final dataLiberacao = DateTime.now().toUtc();
 
     await db.inserirUsuario({
@@ -101,7 +51,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
       'data_liberacao': dataLiberacao.toIso8601String(),
     });
 
-    // Enviar email ao administrador
+    // Envia email ao administrador
     Future.microtask(() async {
       await EmailHelper.enviarEmailAdmin(
         nome: _usuarioController.text.trim(),
@@ -111,28 +61,29 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
       );
     });
 
+    // Recupera usuário salvo
+    final usuarioAtualizado = await db.buscarUltimoUsuario();
+
     // Vai para tela de confirmação
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => ConfirmacaoScreen(
-          email: _emailController.text.trim(),
-          celular: _celularController.text.trim(),
-          renovacao: false,
-        ),
+        builder: (_) =>
+            ConfirmacaoScreen(usuario: usuarioAtualizado!, renovacao: false),
       ),
     );
   }
 
   String? _validarEmail(String? value) {
-    if (value == null || value.isEmpty) return null; // não obrigatório
+    if (value == null || value.isEmpty) return null;
     final regex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
     if (!regex.hasMatch(value)) return "E-mail inválido";
     return null;
   }
 
   String? _validarCelular(String? value) {
-    if (value == null || value.isEmpty) return null; // não obrigatório
+    if (value == null || value.isEmpty) return null;
     final regex = RegExp(r'^[0-9]{10,11}$');
     if (!regex.hasMatch(value)) return "Celular inválido";
     return null;
