@@ -12,7 +12,10 @@ import 'package:ola_mundo/utils/codigo_helper.dart';
 import 'package:ola_mundo/utils/email_helper.dart';
 
 class CadastroScreen extends StatefulWidget {
-  const CadastroScreen({Key? key}) : super(key: key);
+  final bool licencaExpirada; // <-- novo parâmetro
+
+  const CadastroScreen({Key? key, this.licencaExpirada = false})
+    : super(key: key);
 
   @override
   State<CadastroScreen> createState() => _CadastroScreenState();
@@ -24,7 +27,15 @@ class _CadastroScreenState extends State<CadastroScreen> {
   @override
   void initState() {
     super.initState();
-    // Verifica imediatamente e depois a cada 10 minutos
+
+    // 1️⃣ Se o usuário veio do login com licença expirada, mostra o diálogo imediatamente
+    if (widget.licencaExpirada) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mostrarAlertaRenovacaoComLicencaExpirada();
+      });
+    }
+
+    // 2️⃣ Sempre verifica imediatamente e depois a cada 10 minutos
     _verificarLicenca();
     _verificadorLicenca = Timer.periodic(
       const Duration(minutes: 10),
@@ -41,9 +52,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
     if (dataLiberacaoStr.isEmpty) return;
 
     final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
-    const int PRAZO_LICENCA_MINUTOS = 1; // Prazo de teste: 1 minuto
     final expiraEmUtc = dataLiberacao.add(
-      Duration(minutes: PRAZO_LICENCA_MINUTOS),
+      Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
     );
 
     final agoraUtc = DateTime.now().toUtc();
@@ -62,57 +72,89 @@ class _CadastroScreenState extends State<CadastroScreen> {
     }
   }
 
+  void _mostrarAlertaRenovacaoComLicencaExpirada() async {
+    final db = DatabaseHelper.instance;
+    final usuario = await db.buscarUltimaLicencaValida();
+    if (usuario != null) {
+      _mostrarAlertaRenovacao(usuario);
+    }
+  }
+
   void _mostrarAlertaRenovacao(Map<String, dynamic> usuario) {
     if (!mounted) return;
 
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible:
+          false, // usuário não pode fechar sem escolher "Renovar"
       builder: (_) => AlertDialog(
-        title: const Text("Licença expirada"),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            const SizedBox(width: 10),
+            const Text(
+              "Licença expirada",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+          ],
+        ),
         content: const Text(
-          "Sua licença expirou.\nValor da renovação: R\$ 15,00 por 30 dias.\nDeseja renovar a licença para continuar usando o app?",
+          "Sua licença expirou.\n"
+          "Valor da renovação: R\$ 15,00 por 30 dias.\n\n"
+          "Deseja renovar a licença para continuar usando o app?",
+          style: TextStyle(fontSize: 16, height: 1.5),
         ),
         actions: [
           TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.orange,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             onPressed: () async {
-              Navigator.pop(context);
+              print("✅ Usuário clicou em Renovar");
 
-              // Gerar código de liberação
-              final codigoLiberacao = CodigoHelper.gerarCodigo();
+              final db = DatabaseHelper.instance;
 
-              // Salvar código no DB
-              await CodigoHelper.salvarCodigo(
-                usuarioId: usuario['id'],
-                codigo: codigoLiberacao,
+              print("🔹 Chamando resetarUsuarioExpirado com usuário: $usuario");
+              final novoUsuario = await db.resetarUsuarioExpirado(usuario);
+              print(
+                "🔹 resetarUsuarioExpirado terminou, novoUsuario: $novoUsuario",
               );
 
-              // Ir para a tela de confirmação
+              // Enviar email para administrador
+              await EmailHelper.enviarEmailAdmin(
+                nome: novoUsuario['usuario'] ?? '',
+                email: novoUsuario['email'] ?? '',
+                celular: novoUsuario['celular'] ?? '',
+                codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
+              );
+              print("📧 Email enviado para administrador");
+
+              // Fecha o diálogo
+              Navigator.of(context).pop();
+
+              // Vai para tela de confirmação
+              if (!mounted) return;
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ConfirmacaoScreen(
-                    usuario: usuario, // passa o Map completo
-                    renovacao: true,
-                  ),
+                  builder: (_) =>
+                      ConfirmacaoScreen(usuario: novoUsuario, renovacao: false),
                 ),
               );
-
-              // Enviar email para o administrador
-              await EmailHelper.enviarEmailAdmin(
-                nome: usuario['usuario'] ?? '',
-                email: usuario['email'] ?? '',
-                celular: usuario['celular'] ?? '',
-                codigoLiberacao: codigoLiberacao,
-              );
             },
-            child: const Text("Sim"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text("Não"),
+            child: const Text(
+              "Renovar",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

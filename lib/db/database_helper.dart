@@ -67,6 +67,7 @@ class DatabaseHelper {
         celular TEXT,
         codigo_liberacao TEXT,
         data_liberacao TEXT,
+        data_validade TEXT,
         confirmado INTEGER
       )
     ''');
@@ -651,33 +652,57 @@ class DatabaseHelper {
   ) async {
     final db = await database;
 
+    print("🔹🔹 Função resetarUsuarioExpirado chamada");
+
+    // Limpa todos os usuários
+    print("🔹 1. Apagando todos os usuários...");
+    await db.delete('usuarios');
+    await db.execute("DELETE FROM sqlite_sequence WHERE name='usuarios'");
+
+    // Confere se realmente está vazio após o delete
+    final usuariosDepoisDelete = await db.query('usuarios');
+    print("✅ 2. Tabela 'usuarios' limpa -> $usuariosDepoisDelete");
+
     // Salva os dados antigos temporariamente
     final dadosTemp = {
-      'usuario': usuarioAntigo['usuario'],
-      'senha': usuarioAntigo['senha'],
-      'email': usuarioAntigo['email'],
-      'celular': usuarioAntigo['celular'],
+      'usuario': "${usuarioAntigo['usuario']}",
+      'senha': "${usuarioAntigo['senha']}",
+      'email': "${usuarioAntigo['email']}",
+      'celular': "${usuarioAntigo['celular']}",
     };
-
-    // Limpa tabela de usuários
-    await db.delete('usuarios');
+    print("📋 3. Dados temporários preparados: $dadosTemp");
 
     // Gera novo código de liberação
     final novoCodigo = CodigoHelper.gerarCodigo();
+    print("🔑 4. Novo código gerado: $novoCodigo");
 
-    // Cria novo usuário com os dados antigos
+    // Cria novo usuário com os dados antigos + novos campos
+    final agoraUtc = DateTime.now().toUtc();
+
     final novoUsuario = {
       'usuario': dadosTemp['usuario'],
       'senha': dadosTemp['senha'],
       'email': dadosTemp['email'],
       'celular': dadosTemp['celular'],
-      'codigo_liberacao': novoCodigo,
-      'data_liberacao': DateTime.now().toUtc().toIso8601String(),
+      'codigo_liberacao': "$novoCodigo",
+      'data_liberacao': agoraUtc.toIso8601String(),
+      'data_validade': agoraUtc
+          .add(const Duration(minutes: PRAZO_EXPIRACAO_MINUTOS))
+          .toIso8601String(),
       'confirmado': 0,
     };
+    print("📌 5. Novo usuário preparado para inserção: $novoUsuario");
 
-    // Insere novo usuário no banco
-    await inserirUsuario(novoUsuario);
+    // Insere novo usuário no banco e obtém o ID gerado
+    final id = await inserirUsuario(novoUsuario);
+    novoUsuario['id'] = id;
+    print("✅ 6. Novo usuário inserido com ID $id: $novoUsuario");
+
+    // Confere conteúdo da tabela após inserção
+    final usuariosDepoisInsert = await db.query('usuarios');
+    print("📂 7. Usuários na tabela após inserção: $usuariosDepoisInsert");
+
+    print("🔹🔹 Reset finalizado com sucesso!");
 
     return novoUsuario;
   }

@@ -5,16 +5,17 @@ import '../utils/codigo_helper.dart';
 import '../utils/email_helper.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
-const int PRAZO_EXPIRACAO_MINUTOS = 1; // 1 dia = 1440 minutos
 
 class ConfirmacaoScreen extends StatefulWidget {
   final Map<String, dynamic> usuario;
   final bool renovacao;
+  final bool jaMostrouAlerta; // novo flag
 
   const ConfirmacaoScreen({
     Key? key,
     required this.usuario,
     this.renovacao = false,
+    this.jaMostrouAlerta = false, // padrão false
   }) : super(key: key);
 
   @override
@@ -36,6 +37,96 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     print("🔹 ConfirmacaoScreen iniciada");
     print("🔹 Usuário passado: $usuarioAtual");
     print("🔹 Renovação: $isRenovacao");
+    // Dispara alerta se for renovação
+    if (isRenovacao && !widget.jaMostrouAlerta) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mostrarAlertaRenovacao(usuarioAtual);
+      });
+    }
+  }
+
+  void _mostrarAlertaRenovacao(Map<String, dynamic> usuario) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible:
+          false, // usuário não pode fechar sem escolher "Renovar"
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            const SizedBox(width: 10),
+            const Text(
+              "Licença expirada",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+          ],
+        ),
+        content: const Text(
+          "Sua licença expirou.\n"
+          "Valor da renovação: R\$ 15,00 por 30 dias.\n\n"
+          "Deseja renovar a licença para continuar usando o app?",
+          style: TextStyle(fontSize: 16, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.orange,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () async {
+              print("✅ Usuário clicou em Renovar");
+
+              final db = DatabaseHelper.instance;
+
+              print("🔹 Chamando resetarUsuarioExpirado com usuário: $usuario");
+              final novoUsuario = await db.resetarUsuarioExpirado(usuario);
+              print(
+                "🔹 resetarUsuarioExpirado terminou, novoUsuario: $novoUsuario",
+              );
+
+              // Enviar email para administrador
+              await EmailHelper.enviarEmailAdmin(
+                nome: novoUsuario['usuario'] ?? '',
+                email: novoUsuario['email'] ?? '',
+                celular: novoUsuario['celular'] ?? '',
+                codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
+              );
+              print("📧 Email enviado para administrador");
+
+              // Fecha o diálogo
+              Navigator.of(context).pop();
+
+              // Vai para tela de confirmação
+              if (!mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConfirmacaoScreen(
+                    usuario: novoUsuario,
+                    renovacao: true,
+                    jaMostrouAlerta: true, // indica que já mostrou o alerta
+                  ),
+                ),
+              );
+            },
+            child: const Text(
+              "Renovar",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -124,7 +215,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     print("🔹 Tabela de usuários limpa.");
 
     // 3️⃣ Perguntar ao cliente se deseja renovar
-    if (!mounted) return;
+    /*if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -187,7 +278,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
           ),
         ],
       ),
-    );
+    );*/
   }
 
   Widget _buildPixInfo() {

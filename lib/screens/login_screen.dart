@@ -4,10 +4,9 @@ import 'cadastro_screen.dart';
 import 'novo_usuario_screen.dart';
 import 'confirmacao_screen.dart';
 import 'dart:async';
-import '../utils/codigo_helper.dart';
 import '../utils/email_helper.dart';
 
-const int PRAZO_EXPIRACAO_MINUTOS = 1; // licença em minutos
+const int PRAZO_EXPIRACAO_MINUTOS = 10; // licença em minutos
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +21,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _exibirNovoUsuario = true;
 
+  Map<String, dynamic>? usuario; // <-- variável para o usuário carregado/logado
+
   @override
   void initState() {
     super.initState();
@@ -30,7 +31,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _iniciarVerificacaoLicencaPeriodica() {
-    Timer.periodic(const Duration(minutes: 10), (_) async {
+    Timer.periodic(const Duration(minutes: 30), (_) async {
+      // ✅ Só verifica se não estamos em ConfirmacaoScreen com renovacao
+      if (!mounted) return;
+      final routeAtual = ModalRoute.of(context);
+      if (routeAtual?.settings.name == 'ConfirmacaoScreen') {
+        // Estamos na tela de renovação, não faz nada
+        return;
+      }
       await _verificarELimparUsuarioSeLicencaExpirada();
     });
   }
@@ -48,9 +56,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (usuario != null) {
       final expirada = await db.isLicencaExpirada(usuario);
+
       if (expirada) {
-        print("Licença expirada. Resetando usuário...");
-        await db.resetarUsuarioExpirado(usuario);
+        // Sempre direciona para o CadastroScreen com licença expirada
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CadastroScreen(licencaExpirada: true),
+          ),
+        );
+        return;
       }
     }
   }
@@ -89,51 +105,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Verifica se licença expirou
+    // Verifica se a licença expirou
     final expirada = await db.isLicencaExpirada(usuario);
+
     if (expirada) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text("Licença expirada"),
-          content: const Text("Sua licença expirou. Deseja renovar a licença?"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Não"),
-            ),
-            TextButton(
-              onPressed: () async {
-                // Reseta usuário e gera novo código
-                final novoUsuario = await db.resetarUsuarioExpirado(usuario);
-                Navigator.pop(context);
-
-                await EmailHelper.enviarEmailAdmin(
-                  nome: novoUsuario['usuario'] ?? '',
-                  email: novoUsuario['email'] ?? '',
-                  celular: novoUsuario['celular'] ?? '',
-                  codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
-                );
-
-                if (!mounted) return;
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ConfirmacaoScreen(usuario: novoUsuario),
-                  ),
-                );
-              },
-              child: const Text("Sim"),
-            ),
-          ],
+      // Sempre direciona para ConfirmacaoScreen com renovacao: true
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConfirmacaoScreen(usuario: usuario, renovacao: true),
         ),
       );
       return;
     }
 
-    // Login permitido
+    // Licença ainda válida → entra normalmente
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -148,23 +134,34 @@ class _LoginScreenState extends State<LoginScreen> {
     if (ultimoUsuario != null) {
       final expirada = await db.isLicencaExpirada(ultimoUsuario);
       if (!expirada) {
-        // Licença ainda válida
+        // Licença ainda válida, mas força a renovação somente com "Sim"
         showDialog(
           context: context,
-          builder: (_) => AlertDialog(
-            title: const Text("Licença ativa"),
-            content: Text(
-              "A licença atual é válida até ${DateTime.parse(ultimoUsuario['data_liberacao']).add(Duration(minutes: PRAZO_EXPIRACAO_MINUTOS)).toLocal().toString().substring(0, 16)}.\n"
-              "Não é possível criar novo cadastro enquanto a licença estiver ativa.",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("OK"),
-              ),
-            ],
-          ),
+          barrierDismissible: true,
+          builder: (_) {
+            final dataValidade = DateTime.parse(
+              ultimoUsuario['data_validade'],
+            ).toLocal();
+            final dataFormatada =
+                "${dataValidade.day.toString().padLeft(2, '0')}/"
+                "${dataValidade.month.toString().padLeft(2, '0')}/"
+                "${dataValidade.year}";
+
+            return AlertDialog(
+              title: const Text("Licença ativa"),
+              content: Text("Licença válida até: $dataFormatada"),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text("OK"),
+                ),
+              ],
+            );
+          },
         );
+
         return;
       }
     }
@@ -259,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextButton(
                   onPressed: _novoUsuario,
                   child: const Text(
-                    "Novo Cadastro",
+                    "Cadastro",
                     style: TextStyle(fontSize: 16, color: Colors.blue),
                   ),
                 ),

@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
-import 'dart:io'; // para exit(0)
 import '../db/database_helper.dart';
-import 'confirmacao_screen.dart';
-import '../utils/email_helper.dart';
+import 'login_screen.dart';
 import '../utils/codigo_helper.dart';
+import '../utils/email_helper.dart';
+import 'login_screen.dart';
+import 'confirmacao_screen.dart';
+import 'dart:io'; // permite usar exit(0)
 
 const Color primaryColor = Color(0xFF81D4FA);
 
 class NovoUsuarioScreen extends StatefulWidget {
-  const NovoUsuarioScreen({super.key});
+  final Map<String, dynamic>? usuarioPreenchido;
+  final String? codigoRenovacao; // <-- faltava isso
+
+  const NovoUsuarioScreen({
+    super.key,
+    this.usuarioPreenchido,
+    this.codigoRenovacao,
+  });
 
   @override
   State<NovoUsuarioScreen> createState() => _NovoUsuarioScreenState();
@@ -34,6 +43,16 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   }
 
   Future<void> _cadastrarUsuario() async {
+    // Validação obrigatória: e-mail ou celular deve ser preenchido
+    final contatoErro = _validarContatoObrigatorio();
+    if (contatoErro != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(contatoErro)));
+      return;
+    }
+
+    // Valida o restante do formulário
     if (!_formKey.currentState!.validate()) return;
 
     // Gera código e salva usuário
@@ -41,6 +60,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     print("➡️ Código gerado: $codigoLiberacao");
     final dataLiberacao = DateTime.now().toUtc();
 
+    final agoraUtc = DateTime.now().toUtc();
     await db.inserirUsuario({
       'usuario': _usuarioController.text.trim(),
       'senha': _senhaController.text.trim(),
@@ -48,7 +68,10 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
       'celular': _celularController.text.trim(),
       'codigo_liberacao': codigoLiberacao,
       'confirmado': 0,
-      'data_liberacao': dataLiberacao.toIso8601String(),
+      'data_liberacao': agoraUtc.toIso8601String(),
+      'data_validade': agoraUtc
+          .add(const Duration(minutes: PRAZO_EXPIRACAO_MINUTOS))
+          .toIso8601String(),
     });
 
     // Envia email ao administrador
@@ -69,8 +92,11 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            ConfirmacaoScreen(usuario: usuarioAtualizado!, renovacao: false),
+        builder: (_) => ConfirmacaoScreen(
+          usuario:
+              usuarioAtualizado!, // usuário que você acabou de inserir no DB
+          renovacao: false,
+        ),
       ),
     );
   }
@@ -92,6 +118,16 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   String? _validarSenha(String? value) {
     if (value == null || value.isEmpty) return "Informe a senha";
     if (value.length < 6) return "Senha deve ter pelo menos 6 caracteres";
+    return null;
+  }
+
+  // Validação combinada obrigatória: e-mail ou celular
+  String? _validarContatoObrigatorio() {
+    final email = _emailController.text.trim();
+    final celular = _celularController.text.trim();
+    if (email.isEmpty && celular.isEmpty) {
+      return "Informe e-mail ou celular";
+    }
     return null;
   }
 
@@ -174,13 +210,13 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
                 icon: Icons.person,
               ),
               _campoTexto(
-                label: "E-mail (Opcional)",
+                label: "E-mail (Opcional se tiver celular)",
                 controller: _emailController,
                 validator: _validarEmail,
                 icon: Icons.email,
               ),
               _campoTexto(
-                label: "Celular (Opcional)",
+                label: "Celular (Opcional se tiver)",
                 controller: _celularController,
                 validator: _validarCelular,
                 icon: Icons.phone,
