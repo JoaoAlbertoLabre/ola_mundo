@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/insumos_model.dart';
-import 'package:ola_mundo/screens/insumo_screen.dart';
+import '../db/database_helper.dart';
+import '../models/insumos_model.dart';
+import '../screens/insumo_screen.dart';
 
 class ComposicaoProdutoScreen extends StatefulWidget {
   final int produtoId;

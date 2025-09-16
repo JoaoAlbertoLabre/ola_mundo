@@ -6,6 +6,8 @@ import '../utils/email_helper.dart';
 import 'login_screen.dart';
 import 'confirmacao_screen.dart';
 import 'dart:io'; // permite usar exit(0)
+import '../utils/pix_utils.dart';
+import '../utils/email_helper.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
 
@@ -74,6 +76,12 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
           .toIso8601String(),
     });
 
+    final novoUsuarioMap = {
+      'usuario': _usuarioController.text.trim(),
+      'email': _emailController.text.trim(),
+      'celular': _celularController.text.trim(),
+    };
+
     // Envia email ao administrador
     Future.microtask(() async {
       await EmailHelper.enviarEmailAdmin(
@@ -81,6 +89,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
         email: _emailController.text.trim(),
         celular: _celularController.text.trim(),
         codigoLiberacao: codigoLiberacao,
+        identificador: PixUtils.gerarIdentificador(novoUsuarioMap),
       );
     });
 
@@ -110,8 +119,15 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
 
   String? _validarCelular(String? value) {
     if (value == null || value.isEmpty) return null;
-    final regex = RegExp(r'^[0-9]{10,11}$');
-    if (!regex.hasMatch(value)) return "Celular inválido";
+
+    // Remove tudo que não for número
+    final somenteNumeros = value.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Aceita celular com 10 (fixo) ou 11 dígitos (celular com DDD)
+    if (somenteNumeros.length < 10 || somenteNumeros.length > 11) {
+      return "Celular inválido";
+    }
+
     return null;
   }
 
@@ -162,6 +178,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false, // remove a seta de voltar
         title: const Text(
           "Cadastro Novo Usuário",
           style: TextStyle(fontWeight: FontWeight.bold),

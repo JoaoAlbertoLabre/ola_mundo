@@ -1,8 +1,8 @@
 // === Tela principal de Produtos ===
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/produtos_model.dart';
-import 'package:ola_mundo/screens/composicao_produto_screen.dart';
+import '../db/database_helper.dart';
+import '../models/produtos_model.dart';
+import '../screens/composicao_produto_screen.dart';
 
 class ProdutoScreen extends StatefulWidget {
   const ProdutoScreen({Key? key}) : super(key: key);
@@ -100,7 +100,12 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
         centerTitle: true,
       ),
       body: produtos.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: Text(
+                "Nenhum produto cadastrado",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: produtos.length,
@@ -140,21 +145,49 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Text(
                           'Custo: R\$ ${custo.toStringAsFixed(2)}   '
                           'Venda: R\$ ${venda.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 14),
+                          style: const TextStyle(fontSize: 16),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Lucro: % ${percLucro.toStringAsFixed(0)} '
-                          'R\$ ${lucro.toStringAsFixed(2)}   '
-                          'CF: % ${percCF.toStringAsFixed(0)} '
-                          'R\$ ${cf.toStringAsFixed(2)}   '
-                          'CC: % ${percCC.toStringAsFixed(0)} '
-                          'R\$ ${cc.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 12),
+                        const SizedBox(height: 3),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Lucro: ${percLucro.toStringAsFixed(0)}%   '
+                              'R\$ ${lucro.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green, // verde para lucro
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'CF % ${percCF.toStringAsFixed(0)}   R\$ ${cf.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: 20,
+                                ), // espaço entre CF e CC
+                                Text(
+                                  'CC % ${percCC.toStringAsFixed(0)}   R\$ ${cc.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -346,7 +379,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               // Unidade
               TextFormField(
                 controller: _unController,
-                decoration: _inputDecoration("Unidade"),
+                decoration: _inputDecoration("Unidade (ex: kg, un, m, l, pç)"),
               ),
               const SizedBox(height: 16),
 

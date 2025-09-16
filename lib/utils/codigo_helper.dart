@@ -1,5 +1,5 @@
 import 'package:sqflite/sqflite.dart';
-import 'package:ola_mundo/db/database_helper.dart';
+import '../db/database_helper.dart';
 import 'dart:math';
 
 class CodigoHelper {

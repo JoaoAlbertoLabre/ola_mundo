@@ -6,7 +6,8 @@ import 'confirmacao_screen.dart';
 import 'dart:async';
 import '../utils/email_helper.dart';
 
-const int PRAZO_EXPIRACAO_MINUTOS = 10; // licença em minutos
+const int PRAZO_EXPIRACAO_MINUTOS =
+    43200; // 43200  = 1 mês - licença em minutos equivale a 30 dias
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -44,7 +45,24 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _verificarUsuariosExistentes() async {
+    final db = DatabaseHelper.instance;
+
+    // Verifica se existe algum usuário não confirmado
+    final usuarioNaoConfirmado = await db.buscarUltimoUsuarioNaoConfirmado();
+    if (usuarioNaoConfirmado != null) {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConfirmacaoScreen(usuario: usuarioNaoConfirmado),
+        ),
+      );
+      return;
+    }
+
+    // Se não tem pendente → verifica expiração
     await _verificarELimparUsuarioSeLicencaExpirada();
+
     setState(() {
       _exibirNovoUsuario = true;
     });

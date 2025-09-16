@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/insumos_model.dart';
+import '../db/database_helper.dart';
+import '../models/insumos_model.dart';
 import 'dart:io';
 
 // Cor padrão do sistema
@@ -253,7 +253,7 @@ class _InsumoFormState extends State<InsumoForm> {
             TextField(
               controller: unCtrl,
               decoration: InputDecoration(
-                labelText: 'Unidade (ex: kg, un, m)',
+                labelText: 'Unidade (ex: kg, un, m, l, pç)',
                 prefixIcon: const Icon(Icons.straighten, color: primaryColor),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),

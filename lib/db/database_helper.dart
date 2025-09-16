@@ -1,8 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:ola_mundo/models/produtos_model.dart';
-import 'package:ola_mundo/utils/codigo_helper.dart';
-import 'package:ola_mundo/screens/login_screen.dart';
+import 'package:vendo_certo/models/produtos_model.dart';
+import 'package:vendo_certo/utils/codigo_helper.dart';
+import 'package:vendo_certo/screens/login_screen.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -711,5 +711,16 @@ class DatabaseHelper {
     final dbClient = await database;
     await dbClient.delete('usuarios'); // deleta todos os registros
     print("🔹 Tabela 'usuarios' limpa via limparUsuarios()");
+  }
+
+  Future<Map<String, dynamic>?> buscarUltimoUsuarioNaoConfirmado() async {
+    final db = await database;
+    final resultado = await db.query(
+      'usuarios',
+      where: 'confirmado = 0',
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    return resultado.isNotEmpty ? resultado.first : null;
   }
 }

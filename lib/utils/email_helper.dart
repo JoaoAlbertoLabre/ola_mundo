@@ -7,9 +7,10 @@ class EmailHelper {
     required String email,
     required String celular,
     required String codigoLiberacao,
+    required String identificador,
   }) async {
-    String username = 'carnesbebidas2022@gmail.com';
-    String password = 'kikjmigspgpbivnu';
+    String username = 'vendocerto25@gmail.com';
+    String password = 'jvzdxcjvozrcccva';
 
     final smtpServer = SmtpServer(
       'smtp.gmail.com',
@@ -21,11 +22,11 @@ class EmailHelper {
     );
 
     final message = Message()
-      ..from = Address(username, 'App Financeiro')
-      ..recipients.add('carnesbebidas2022@gmail.com')
+      ..from = Address(username, 'Vendo Certo')
+      ..recipients.add('vendocerto25@gmail.com')
       ..subject = 'Novo usuário cadastrado'
       ..text =
-          'Nome: $nome\nEmail: $email\nCelular: $celular\nCódigo de liberação: $codigoLiberacao';
+          'Nome: $nome\nEmail: $email\nCelular: $celular\nCódigo de liberação: $codigoLiberacao\nIdentificador: $identificador';
 
     try {
       await send(message, smtpServer);

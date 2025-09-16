@@ -7,9 +7,10 @@ import 'faturamento_screen.dart';
 import 'lucro_screen.dart';
 import 'login_screen.dart';
 import '../db/database_helper.dart';
-import 'package:ola_mundo/screens/confirmacao_screen.dart';
-import 'package:ola_mundo/utils/codigo_helper.dart';
-import 'package:ola_mundo/utils/email_helper.dart';
+import '../screens/confirmacao_screen.dart';
+import '../utils/codigo_helper.dart';
+import '../utils/pix_utils.dart';
+import '../utils/email_helper.dart';
 
 class CadastroScreen extends StatefulWidget {
   final bool licencaExpirada; // <-- novo parâmetro
@@ -132,6 +133,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 email: novoUsuario['email'] ?? '',
                 celular: novoUsuario['celular'] ?? '',
                 codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
+                identificador: PixUtils.gerarIdentificador(novoUsuario),
               );
               print("📧 Email enviado para administrador");
 

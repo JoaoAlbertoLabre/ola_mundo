@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/lucro_model.dart';
+import '../db/database_helper.dart';
+import '../models/lucro_model.dart';
 
 const Color primaryColor = Color(0xFF2196F3); // Azul padrão do faturamento
 

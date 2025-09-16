@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/custo_fixo_model.dart';
+import '../db/database_helper.dart';
+import '../models/custo_fixo_model.dart';
 
 const Color primaryColor = Color(0xFF81D4FA); // Azul suave
 

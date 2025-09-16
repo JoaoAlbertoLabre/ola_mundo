@@ -3,6 +3,9 @@ import '../db/database_helper.dart';
 import 'login_screen.dart';
 import '../utils/codigo_helper.dart';
 import '../utils/email_helper.dart';
+import '../utils/pix_utils.dart';
+import '../models/usuario_model.dart';
+import '../screens/pix_qr_screen.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
 
@@ -34,254 +37,24 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     super.initState();
     usuarioAtual = widget.usuario;
     isRenovacao = widget.renovacao;
-    print("🔹 ConfirmacaoScreen iniciada");
-    print("🔹 Usuário passado: $usuarioAtual");
-    print("🔹 Renovação: $isRenovacao");
-    // Dispara alerta se for renovação
-    if (isRenovacao && !widget.jaMostrouAlerta) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mostrarAlertaRenovacao(usuarioAtual);
-      });
-    }
   }
 
-  void _mostrarAlertaRenovacao(Map<String, dynamic> usuario) {
-    if (!mounted) return;
+  // Função para gerar identificador baseado em celular ou email
+  String gerarIdentificador(Map<String, dynamic> usuario) {
+    final celular = usuario['celular'] as String?;
+    final email = usuario['email'] as String?;
 
-    showDialog(
-      context: context,
-      barrierDismissible:
-          false, // usuário não pode fechar sem escolher "Renovar"
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            const SizedBox(width: 10),
-            const Text(
-              "Licença expirada",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-            ),
-          ],
-        ),
-        content: const Text(
-          "Sua licença expirou.\n"
-          "Valor da renovação: R\$ 15,00 por 30 dias.\n\n"
-          "Deseja renovar a licença para continuar usando o app?",
-          style: TextStyle(fontSize: 16, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.orange,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () async {
-              print("✅ Usuário clicou em Renovar");
-
-              final db = DatabaseHelper.instance;
-
-              print("🔹 Chamando resetarUsuarioExpirado com usuário: $usuario");
-              final novoUsuario = await db.resetarUsuarioExpirado(usuario);
-              print(
-                "🔹 resetarUsuarioExpirado terminou, novoUsuario: $novoUsuario",
-              );
-
-              // Enviar email para administrador
-              await EmailHelper.enviarEmailAdmin(
-                nome: novoUsuario['usuario'] ?? '',
-                email: novoUsuario['email'] ?? '',
-                celular: novoUsuario['celular'] ?? '',
-                codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
-              );
-              print("📧 Email enviado para administrador");
-
-              // Fecha o diálogo
-              Navigator.of(context).pop();
-
-              // Vai para tela de confirmação
-              if (!mounted) return;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ConfirmacaoScreen(
-                    usuario: novoUsuario,
-                    renovacao: true,
-                    jaMostrouAlerta: true, // indica que já mostrou o alerta
-                  ),
-                ),
-              );
-            },
-            child: const Text(
-              "Renovar",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _codigoController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _confirmarCodigo() async {
-    print("🔹 _confirmarCodigo chamado");
-
-    // 1️⃣ Buscar usuário mais recente no DB
-    final usuarioDb = await db.buscarUltimoUsuario();
-    if (usuarioDb == null) {
-      print("❌ Nenhum usuário encontrado no DB");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Nenhum usuário encontrado.")),
-      );
-      return;
-    }
-
-    setState(() => usuarioAtual = usuarioDb);
-
-    // 2️⃣ Normalizar códigos
-    String codigoLiberacao = (usuarioDb['codigo_liberacao'] ?? '').toString();
-    String normalize(String s) => s
-        .replaceAll(RegExp(r'\s+'), '')
-        .replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
-    final codigoDigitado = normalize(_codigoController.text);
-    codigoLiberacao = normalize(codigoLiberacao);
-
-    print("🔹 Código digitado: '$codigoDigitado'");
-    print("🔹 Código liberacao DB: '$codigoLiberacao'");
-
-    // 3️⃣ Validação do código
-    if (codigoDigitado.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Informe o código recebido.")),
-      );
-      return;
-    }
-
-    if (codigoDigitado == codigoLiberacao) {
-      print("✅ Código válido (tipo: liberação)");
-
-      // Atualiza DB com confirmação e nova data de liberação
-      await db.atualizarUsuario({
-        'id': usuarioAtual['id'],
-        'confirmado': 1,
-        'data_liberacao': DateTime.now().toIso8601String(),
-      });
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Código confirmado!")));
-
-      // Volta para Login
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+    if (celular != null && celular.isNotEmpty) {
+      return "CEL_${celular}";
+    } else if (email != null && email.isNotEmpty) {
+      return "EMAIL_${email.substring(0, email.length > 20 ? 20 : email.length)}";
     } else {
-      print("❌ Código inválido!");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Código inválido.")));
+      return "USUARIO_SEM_DADOS";
     }
   }
 
-  // ====================== FUNÇÃO DE RENOVAÇÃO ======================
-  Future<void> renovarLicenca(Map<String, dynamic> usuario) async {
-    print("🔹 Licença expirada. Iniciando renovação para cliente...");
-
-    // 1️⃣ Salvar dados temporários
-    final dadosTemp = {
-      'usuario': usuario['usuario'],
-      'senha': usuario['senha'],
-      'email': usuario['email'],
-      'celular': usuario['celular'],
-    };
-    print("🔹 Dados temporários salvos: $dadosTemp");
-
-    // 2️⃣ Limpar toda a tabela de usuários
-    await db.limparUsuarios(); // precisa existir no DatabaseHelper
-    print("🔹 Tabela de usuários limpa.");
-
-    // 3️⃣ Perguntar ao cliente se deseja renovar
-    /*if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text("Licença expirada"),
-        content: const Text(
-          "Deseja renovar sua licença e continuar usando o aplicativo?",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              print("🟢 Renovação recusada pelo usuário");
-            },
-            child: const Text("Não"),
-          ),
-          TextButton(
-            onPressed: () async {
-              print("🟢 Renovação aceita pelo usuário");
-
-              // 4️⃣ Criar novo código de liberação
-              final novoCodigo = CodigoHelper.gerarCodigo();
-              print("➡️ Novo código gerado: $novoCodigo");
-
-              // 5️⃣ Criar novo usuário como se fosse o primeiro cadastro
-              final novoUsuario = {
-                'usuario': dadosTemp['usuario'],
-                'senha': dadosTemp['senha'],
-                'email': dadosTemp['email'],
-                'celular': dadosTemp['celular'],
-                'codigo_liberacao': novoCodigo,
-                'data_liberacao': DateTime.now().toIso8601String(),
-                'confirmado': 0,
-              };
-
-              await db.inserirUsuario(novoUsuario);
-              print("✅ Novo usuário criado no DB: $novoUsuario");
-
-              // 6️⃣ Enviar email para o administrador
-              await EmailHelper.enviarEmailAdmin(
-                nome: dadosTemp['usuario'] ?? '',
-                email: dadosTemp['email'] ?? '',
-                celular: dadosTemp['celular'] ?? '',
-                codigoLiberacao: novoCodigo,
-              );
-              print("📧 Email enviado com código: $novoCodigo");
-
-              Navigator.pop(context); // fecha o diálogo
-
-              // 7️⃣ Navegar para tela de confirmação novamente
-              if (!mounted) return;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ConfirmacaoScreen(usuario: novoUsuario),
-                ),
-              );
-            },
-            child: const Text("Sim"),
-          ),
-        ],
-      ),
-    );*/
-  }
-
-  Widget _buildPixInfo() {
+  // Widget que exibe as informações do PIX, incluindo o identificador
+  Widget _buildPixInfo(Map<String, dynamic> usuario) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -291,22 +64,30 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Text(
+        children: [
+          const Text(
             "LICENÇA NOVA - Validade 30 dias:",
             style: TextStyle(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 12),
-          Text(
+          const SizedBox(height: 12),
+          const Text(
             "💳 Dados para PIX:",
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 8),
-          Text("Valor: 15,00"),
-          Text("Chave: 123.456.789-00"),
-          Text("Banco: 000 - Nome do Banco"),
-          Text("Favorecido: Empresa X"),
+          const SizedBox(height: 8),
+          const Text("Para fazer o PIX basta gerar o QR Code"),
+          const Text("Valor: 15,00"),
+          const Text("Favorecido: JEA Software Company"),
+          const Text("E-mail para contato: vendocerto25@gmail.com"),
+          const SizedBox(height: 8),
+          Text(
+            "Identificador: ${gerarIdentificador(usuario)}",
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.red,
+            ),
+          ),
         ],
       ),
     );
@@ -316,82 +97,92 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(isRenovacao ? "Renovar Licença" : "Confirmação"),
-        backgroundColor: primaryColor,
-        centerTitle: true,
+        title: const Text("Confirmação"),
+        automaticallyImplyLeading: false, // remove a seta de voltar
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.verified_user, size: 80, color: primaryColor),
-            const SizedBox(height: 20),
-            if (isRenovacao) ...[
-              const Text(
-                "Nova licença, válida por 30 dias",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Faça pagamento via PIX e aguarde o administrador liberar o código.",
-                style: TextStyle(fontSize: 16, color: Colors.black87),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-            ],
-            _buildPixInfo(),
+            const SizedBox(height: 8),
+            const Text(
+              "Faça pagamento via PIX e aguarde o administrador liberar o código.",
+              style: TextStyle(fontSize: 16, color: Colors.black87),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            _buildPixInfo(usuarioAtual), // informações do Pix
+
+            const SizedBox(height: 16),
+            // 🔹 Botão para gerar QR Code Pix
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        PixQRCodeScreen(usuario: usuarioAtual, valor: 15.0),
+                  ),
+                );
+              },
+              child: const Text('Gerar QR Code Pix'),
+            ),
+
             const SizedBox(height: 24),
+            // TextField para digitar o código de liberação
             TextField(
               controller: _codigoController,
               decoration: InputDecoration(
                 labelText: "Digite o código recebido",
                 filled: true,
                 fillColor: Colors.grey[100],
-                labelStyle: TextStyle(
-                  color: Colors.grey[700],
+                labelStyle: const TextStyle(
+                  color: Colors.grey,
                   fontWeight: FontWeight.w500,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 20,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: const BorderSide(
-                    color: Colors.blueAccent,
-                    width: 2,
-                  ),
-                ),
-                suffixIcon: const Icon(Icons.vpn_key, color: Colors.blueAccent),
               ),
-              keyboardType: TextInputType.text,
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _confirmarCodigo,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor.withOpacity(0.9),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  "Confirmar",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
+            const SizedBox(height: 16),
+            // Botão Confirmar código
+            ElevatedButton(
+              onPressed: () async {
+                final codigoDigitado = _codigoController.text.trim();
+
+                if (codigoDigitado.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Digite o código de liberação"),
+                    ),
+                  );
+                  return;
+                }
+
+                if (codigoDigitado == usuarioAtual['codigo_liberacao']) {
+                  await db.atualizarUsuario({
+                    'id': usuarioAtual['id'],
+                    'confirmado': 1,
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Código confirmado!")),
+                  );
+
+                  await Future.delayed(const Duration(milliseconds: 500));
+
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => LoginScreen()),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Código incorreto, tente novamente"),
+                    ),
+                  );
+                }
+              },
+              child: const Text("Confirmar"),
             ),
           ],
         ),
