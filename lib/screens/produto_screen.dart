@@ -146,51 +146,53 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
+
+                        // 1ª linha - Venda
                         Text(
-                          'Custo: R\$ ${custo.toStringAsFixed(2)}   '
                           'Venda: R\$ ${venda.toStringAsFixed(2)}',
                           style: const TextStyle(fontSize: 16),
                         ),
                         const SizedBox(height: 3),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Lucro: ${percLucro.toStringAsFixed(0)}%   '
-                              'R\$ ${lucro.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green, // verde para lucro
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'CF % ${percCF.toStringAsFixed(0)}   R\$ ${cf.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                                const SizedBox(
-                                  width: 20,
-                                ), // espaço entre CF e CC
-                                Text(
-                                  'CC % ${percCC.toStringAsFixed(0)}   R\$ ${cc.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+
+                        // 2ª linha - Lucro
+                        Text(
+                          'Lucro: ${percLucro.toStringAsFixed(0)}%   R\$ ${lucro.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green, // verde para lucro
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+
+                        // 3ª linha - Custo
+                        Text(
+                          'Custo: R\$ ${custo.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        const SizedBox(height: 3),
+
+                        // 4ª linha - Custo Fixo
+                        Text(
+                          'Custo Fixo: ${percCF.toStringAsFixed(0)}%   R\$ ${cf.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+
+                        // 5ª linha - Custo Comercial
+                        Text(
+                          'Custo Comercial: ${percCC.toStringAsFixed(0)}%   R\$ ${cc.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.red,
+                          ),
                         ),
                       ],
                     ),
+
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -221,12 +223,29 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: abrirCadastroProduto,
-        icon: const Icon(Icons.add),
-        label: const Text("Novo"),
-        //backgroundColor: Colors.blueGrey[700],
+      floatingActionButton: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: ElevatedButton.icon(
+          onPressed: abrirCadastroProduto,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            "Inserir Novo Produto",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue.withOpacity(0.9),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }

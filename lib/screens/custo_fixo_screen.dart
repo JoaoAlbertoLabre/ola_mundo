@@ -3,6 +3,7 @@ import '../db/database_helper.dart';
 import '../models/custo_fixo_model.dart';
 
 const Color primaryColor = Color(0xFF81D4FA); // Azul suave
+const Color buttonBege = Color(0xFFF5F5DC); // Bege claro para botões de inserir
 
 class CustoFixoScreen extends StatefulWidget {
   const CustoFixoScreen({Key? key}) : super(key: key);
@@ -69,14 +70,34 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
         child: Column(
           children: [
             if (custos.isEmpty)
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CustoFixoForm()),
-                  ).then((_) => carregarCustos());
-                },
-                child: const Text('Inserir Custo Fixo'),
+              Center(
+                child: SizedBox(
+                  width: 200,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: buttonBege,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const CustoFixoForm(),
+                        ),
+                      ).then((_) => carregarCustos());
+                    },
+                    child: const Text(
+                      'Inserir Custo Fixo',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             if (custos.isNotEmpty)
               Row(
@@ -92,10 +113,7 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(
-                          Icons.edit,
-                          color: Colors.blueGrey,
-                        ), // azul escuro
+                        icon: const Icon(Icons.edit, color: Colors.blueGrey),
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -106,10 +124,7 @@ class _CustoFixoScreenState extends State<CustoFixoScreen> {
                         },
                       ),
                       IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.red,
-                        ), // vermelho
+                        icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => deletarCusto(custos.first.id!),
                       ),
                     ],

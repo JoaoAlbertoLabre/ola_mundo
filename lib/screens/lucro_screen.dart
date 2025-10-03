@@ -2,7 +2,24 @@ import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/lucro_model.dart';
 
-const Color primaryColor = Color(0xFF2196F3); // Azul padrão do faturamento
+const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
+
+const List<String> nomesMeses = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+];
+
+enum TipoEntrada { percentual, valor }
 
 class LucroScreen extends StatefulWidget {
   const LucroScreen({Key? key}) : super(key: key);
@@ -33,7 +50,32 @@ class _LucroScreenState extends State<LucroScreen> {
     carregarLucros();
   }
 
-  void abrirForm({Lucro? item}) {
+  void abrirForm({Lucro? item}) async {
+    if (lucros.isEmpty && item == null) {
+      // Primeiro lucro
+      final faturamentos = await db.listarFaturamentos();
+      if (faturamentos.isEmpty) {
+        // Mostra alerta
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Atenção'),
+            content: const Text(
+              'Você precisa cadastrar um faturamento antes de inserir o primeiro lucro.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return; // Sai da função, não abre o form
+      }
+    }
+
+    // Se não for o primeiro lucro ou já existe faturamento, abre o form
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => LucroForm(item: item)),
@@ -54,7 +96,7 @@ class _LucroScreenState extends State<LucroScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lucro'),
+        title: const Text('Lucro Desejado'),
         backgroundColor: primaryColor,
         actions: [
           TextButton.icon(
@@ -69,15 +111,8 @@ class _LucroScreenState extends State<LucroScreen> {
         child: Column(
           children: [
             if (lucros.isEmpty)
-              Center(
-                child: ElevatedButton(
-                  onPressed: () => abrirForm(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                  ),
-                  child: const Text('Inserir Lucro'),
-                ),
-              ),
+              if (lucros.isEmpty) SizedBox.shrink(),
+
             if (lucros.isNotEmpty)
               Expanded(
                 child: Column(
@@ -96,34 +131,74 @@ class _LucroScreenState extends State<LucroScreen> {
                     ),
                     const SizedBox(height: 10),
                     Expanded(
-                      child: ListView.builder(
-                        itemCount: lucros.length,
-                        itemBuilder: (context, index) {
-                          final l = lucros[index];
-                          return ListTile(
-                            title: Text('Lucro em ${l.data}'),
-                            subtitle: Text(
-                              'Percentual: ${l.percentual.toStringAsFixed(2)}%',
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.edit,
-                                    color: Colors.blue.shade800,
+                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                        future: db.listarFaturamentos(),
+                        builder: (context, snapshotFaturamento) {
+                          final faturamentos = snapshotFaturamento.data ?? [];
+                          return ListView.builder(
+                            itemCount: lucros.length,
+                            itemBuilder: (context, index) {
+                              final l = lucros[index];
+
+                              double valorCalculado = 0;
+                              if (faturamentos.isNotEmpty) {
+                                final ultimos = faturamentos.reversed
+                                    .take(12)
+                                    .toList();
+                                final mediaFaturamento =
+                                    ultimos
+                                        .map(
+                                          (e) => (e['valor'] as num).toDouble(),
+                                        )
+                                        .reduce((a, b) => a + b) /
+                                    ultimos.length;
+                                valorCalculado =
+                                    (mediaFaturamento * l.percentual) / 100;
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ListTile(
+                                    title: Text('${l.mesNome}/${l.ano}'),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.edit,
+                                            color: Colors.blue.shade800,
+                                          ),
+                                          onPressed: () => abrirForm(item: l),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed: () => deletarLucro(l.id!),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  onPressed: () => abrirForm(item: l),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 16),
+                                    child: Text(
+                                      'Percentual: ${l.percentual.toStringAsFixed(2)}%',
+                                    ),
                                   ),
-                                  onPressed: () => deletarLucro(l.id!),
-                                ),
-                              ],
-                            ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: 16,
+                                      bottom: 8,
+                                    ),
+                                    child: Text(
+                                      'Valor: R\$ ${valorCalculado.toStringAsFixed(2)}',
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
                           );
                         },
                       ),
@@ -149,45 +224,105 @@ class LucroForm extends StatefulWidget {
 
 class _LucroFormState extends State<LucroForm> {
   final db = DatabaseHelper.instance;
-  final dataCtrl = TextEditingController();
-  final percentualCtrl = TextEditingController();
+  final mesCtrl = TextEditingController();
+  final anoCtrl = TextEditingController();
+  final campoCtrl = TextEditingController();
+  TipoEntrada tipoSelecionado = TipoEntrada.percentual;
 
   @override
   void initState() {
     super.initState();
     if (widget.item != null) {
-      dataCtrl.text = widget.item!.data;
-      percentualCtrl.text = widget.item!.percentual.toString();
+      mesCtrl.text = widget.item!.mesNome;
+      anoCtrl.text = widget.item!.ano.toString();
+      campoCtrl.text = widget.item!.percentual.toStringAsFixed(2);
+      tipoSelecionado = TipoEntrada.percentual; // default
     }
   }
 
-  Future<void> selecionarData() async {
-    DateTime initialDate = DateTime.now();
-    if (dataCtrl.text.isNotEmpty) {
-      try {
-        initialDate = DateTime.parse(dataCtrl.text);
-      } catch (_) {}
-    }
-
-    final DateTime? escolhida = await showDatePicker(
+  Future<void> selecionarMes() async {
+    final escolhido = await showDialog<int>(
       context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+      builder: (ctx) {
+        return SimpleDialog(
+          title: const Text('Selecione o mês'),
+          children: List.generate(
+            12,
+            (i) => SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, i + 1),
+              child: Text(nomesMeses[i]),
+            ),
+          ),
+        );
+      },
     );
 
-    if (escolhida != null) {
+    if (escolhido != null) {
       setState(() {
-        dataCtrl.text = escolhida.toIso8601String().split('T').first;
+        mesCtrl.text = nomesMeses[escolhido - 1];
+      });
+    }
+  }
+
+  Future<void> selecionarAno() async {
+    final anos = List.generate(50, (i) => 2024 + i);
+    final escolhido = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return SimpleDialog(
+          title: const Text('Selecione o ano'),
+          children: anos
+              .map(
+                (a) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, a),
+                  child: Text(a.toString()),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+
+    if (escolhido != null) {
+      setState(() {
+        anoCtrl.text = escolhido.toString();
       });
     }
   }
 
   Future<void> salvarOuAtualizar() async {
+    final mesIndex = nomesMeses.indexOf(mesCtrl.text) + 1;
+    double percentual = 0;
+
+    // Calcular percentual baseado no tipo selecionado
+    final faturamentos = await db.listarFaturamentos();
+    double mediaFaturamento = 0;
+    if (faturamentos.isNotEmpty) {
+      final ultimos = faturamentos.reversed.take(12).toList();
+      mediaFaturamento =
+          ultimos
+              .map((e) => (e['valor'] as num).toDouble())
+              .reduce((a, b) => a + b) /
+          ultimos.length;
+    }
+
+    if (tipoSelecionado == TipoEntrada.percentual) {
+      percentual = double.tryParse(campoCtrl.text.replaceAll(',', '.')) ?? 0;
+    } else {
+      final valorDigitado =
+          double.tryParse(campoCtrl.text.replaceAll(',', '.')) ?? 0;
+      if (mediaFaturamento > 0) {
+        percentual = (valorDigitado / mediaFaturamento) * 100;
+      }
+    }
+
+    percentual = double.parse(percentual.toStringAsFixed(2));
+
     final lucro = Lucro(
       id: widget.item?.id,
-      data: dataCtrl.text,
-      percentual: double.tryParse(percentualCtrl.text) ?? 0,
+      mes: mesIndex,
+      ano: int.tryParse(anoCtrl.text) ?? 0,
+      percentual: percentual,
     );
 
     if (widget.item == null) {
@@ -216,28 +351,77 @@ class _LucroFormState extends State<LucroForm> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: dataCtrl,
-              readOnly: true,
-              onTap: selecionarData,
-              decoration: const InputDecoration(
-                labelText: 'Data',
-                suffixIcon: Icon(Icons.calendar_today),
-              ),
-            ),
-            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: TextField(
-                    controller: percentualCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Percentual'),
+                    controller: mesCtrl,
+                    readOnly: true,
+                    onTap: selecionarMes,
+                    decoration: const InputDecoration(
+                      labelText: 'Mês',
+                      suffixIcon: Icon(Icons.calendar_month),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text('%', style: TextStyle(fontSize: 16)),
+                Expanded(
+                  child: TextField(
+                    controller: anoCtrl,
+                    readOnly: true,
+                    onTap: selecionarAno,
+                    decoration: const InputDecoration(
+                      labelText: 'Ano',
+                      suffixIcon: Icon(Icons.date_range),
+                    ),
+                  ),
+                ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: RadioListTile<TipoEntrada>(
+                    title: const Text('Percentual'),
+                    value: TipoEntrada.percentual,
+                    groupValue: tipoSelecionado,
+                    onChanged: (v) {
+                      setState(() {
+                        tipoSelecionado = v!;
+                      });
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: RadioListTile<TipoEntrada>(
+                    title: const Text('Valor'),
+                    value: TipoEntrada.valor,
+                    groupValue: tipoSelecionado,
+                    onChanged: (v) {
+                      setState(() {
+                        tipoSelecionado = v!;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: campoCtrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: tipoSelecionado == TipoEntrada.percentual
+                    ? 'Percentual'
+                    : 'Valor',
+                prefixText: tipoSelecionado == TipoEntrada.valor
+                    ? 'R\$ '
+                    : null,
+                suffixText: tipoSelecionado == TipoEntrada.percentual
+                    ? '%'
+                    : null,
+              ),
             ),
             const SizedBox(height: 16),
             SizedBox(

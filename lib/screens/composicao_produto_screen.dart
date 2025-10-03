@@ -260,22 +260,22 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                 color: Colors.black87,
               ),
             ),
-            const SizedBox(height: 16),
-            Center(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-                onPressed: _salvarComposicao,
-                icon: const Icon(Icons.save, color: Colors.white),
-                label: const Text(
-                  'Salvar Composição',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              ),
-            ),
           ],
+        ),
+      ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            minimumSize: const Size(double.infinity, 48),
+          ),
+          onPressed: _salvarComposicao,
+          icon: const Icon(Icons.save, color: Colors.white),
+          label: const Text(
+            'Salvar Composição',
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
         ),
       ),
     );

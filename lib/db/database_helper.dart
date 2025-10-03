@@ -57,19 +57,31 @@ class DatabaseHelper {
   }
 
   Future _createDB(Database db, int version) async {
-    // ------------------- PRODUTO -------------------
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario TEXT,
-        senha TEXT,
-        email TEXT,
-        celular TEXT,
-        codigo_liberacao TEXT,
-        data_liberacao TEXT,
-        data_validade TEXT,
-        confirmado INTEGER
-      )
+      CREATE TABLE usuarios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario TEXT NOT NULL,
+      senha TEXT NOT NULL,
+      email TEXT,
+      celular TEXT,
+      codigo_liberacao TEXT,
+      confirmado INTEGER NOT NULL DEFAULT 0,
+      data_liberacao TEXT,
+      data_validade TEXT,
+      identificador TEXT,
+      txid TEXT NOT NULL UNIQUE,
+      
+      -- ADICIONE ESTAS COLUNAS --
+      nome_fiscal TEXT,
+      cpfCnpj TEXT,
+      cep TEXT,
+      logradouro TEXT,
+      numero TEXT,
+      complemento TEXT,
+      bairro TEXT,
+      cidade TEXT,
+      uf TEXT
+    )
     ''');
 
     await db.execute('''
@@ -127,18 +139,21 @@ class DatabaseHelper {
 
     // ------------------- FATURAMENTO -------------------
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS faturamento (
+      CREATE TABLE faturamento (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        data TEXT NOT NULL,
+        mes INTEGER NOT NULL,
+        ano INTEGER NOT NULL,
         valor REAL NOT NULL
       )
+
     ''');
 
     // ------------------- LUCRO -------------------
     await db.execute('''
       CREATE TABLE IF NOT EXISTS lucro (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        data TEXT NOT NULL,
+        mes INTEGER NOT NULL,
+        ano INTEGER NOT NULL,
         percentual REAL NOT NULL
       )
     ''');
@@ -291,6 +306,15 @@ class DatabaseHelper {
     return res.isNotEmpty ? res.first : null;
   }
 
+  Future<Map<String, dynamic>?> queryUsuarioPorId(int id) async {
+    final db = await database;
+    final result = await db.query('usuarios', where: 'id = ?', whereArgs: [id]);
+    if (result.isNotEmpty) {
+      return result.first;
+    }
+    return null;
+  }
+
   // ================-Nova Logica+++++++++++++++
 
   // ==================== CRUD PRODUTO ====================
@@ -390,7 +414,7 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> listarFaturamentos() async {
     final db = await instance.database;
-    return await db.query('faturamento');
+    return await db.query('faturamento', orderBy: 'ano DESC, mes DESC');
   }
 
   Future<int> atualizarFaturamento(Map<String, dynamic> row) async {
@@ -478,6 +502,26 @@ class DatabaseHelper {
   Future<int> deletarInsumo(int id) async {
     final db = await instance.database;
     return await db.delete('insumo', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Retorna lista de produtos que usam o insumo
+  Future<List<Map<String, dynamic>>> buscarProdutosPorInsumo(
+    int insumoId,
+  ) async {
+    final dbClient = await database;
+    // Supondo que você tenha uma tabela 'composicao_produto' com colunas 'produto_id' e 'insumo_id'
+    // E uma tabela 'produto' com 'id' e 'nome'
+    final result = await dbClient.rawQuery(
+      '''
+    SELECT p.nome
+    FROM composicao_produto cp
+    JOIN produto p ON cp.produto_id = p.id
+    WHERE cp.insumo_id = ?
+  ''',
+      [insumoId],
+    );
+
+    return result;
   }
 
   // ==================== CRUD COMPOSICAO PRODUTO ====================
@@ -722,5 +766,36 @@ class DatabaseHelper {
       limit: 1,
     );
     return resultado.isNotEmpty ? resultado.first : null;
+  }
+
+  // Adicione esta função dentro da classe DatabaseHelper em db/database_helper.dart
+
+  Future<Map<String, dynamic>> resetarUsuarioParaRenovacao(
+    Map<String, dynamic> usuarioAntigo,
+    String novoIdentificador,
+  ) async {
+    final db = await instance.database;
+    final agoraUtc = DateTime.now().toUtc();
+
+    final dadosAtualizados = {
+      'codigo_liberacao': CodigoHelper.gerarCodigo(),
+      'identificador':
+          novoIdentificador, // O mais importante: atualiza com o ID da nova transação
+      'confirmado': 0, // Reseta a confirmação
+      'data_liberacao': agoraUtc.toIso8601String(),
+      'data_validade': agoraUtc
+          .add(const Duration(minutes: PRAZO_EXPIRACAO_MINUTOS))
+          .toIso8601String(),
+    };
+
+    await db.update(
+      'usuarios',
+      dadosAtualizados,
+      where: 'id = ?',
+      whereArgs: [usuarioAntigo['id']],
+    );
+
+    // Retorna um novo mapa com os dados antigos e os novos combinados
+    return {...usuarioAntigo, ...dadosAtualizados};
   }
 }

@@ -1,13 +1,14 @@
+// lib/screens/login_screen.dart
+
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import 'cadastro_screen.dart';
 import 'novo_usuario_screen.dart';
 import 'confirmacao_screen.dart';
 import 'dart:async';
-import '../utils/email_helper.dart';
+// import '../utils/email_helper.dart'; // ALTERAÇÃO: Linha removida pois o arquivo não existe mais
 
-const int PRAZO_EXPIRACAO_MINUTOS =
-    43200; // 43200  = 1 mês - licença em minutos equivale a 30 dias
+const int PRAZO_EXPIRACAO_MINUTOS = 43200; // 30 dias
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,8 +22,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _exibirNovoUsuario = true;
+  bool _senhaVisivel = false;
 
-  Map<String, dynamic>? usuario; // <-- variável para o usuário carregado/logado
+  Map<String, dynamic>? usuario;
 
   @override
   void initState() {
@@ -33,11 +35,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _iniciarVerificacaoLicencaPeriodica() {
     Timer.periodic(const Duration(minutes: 30), (_) async {
-      // ✅ Só verifica se não estamos em ConfirmacaoScreen com renovacao
       if (!mounted) return;
       final routeAtual = ModalRoute.of(context);
       if (routeAtual?.settings.name == 'ConfirmacaoScreen') {
-        // Estamos na tela de renovação, não faz nada
         return;
       }
       await _verificarELimparUsuarioSeLicencaExpirada();
@@ -46,9 +46,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _verificarUsuariosExistentes() async {
     final db = DatabaseHelper.instance;
-
-    // Verifica se existe algum usuário não confirmado
     final usuarioNaoConfirmado = await db.buscarUltimoUsuarioNaoConfirmado();
+
     if (usuarioNaoConfirmado != null) {
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -60,12 +59,14 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Se não tem pendente → verifica expiração
     await _verificarELimparUsuarioSeLicencaExpirada();
 
-    setState(() {
-      _exibirNovoUsuario = true;
-    });
+    // Verificação para garantir que o estado só é atualizado se a tela ainda estiver "montada"
+    if (mounted) {
+      setState(() {
+        _exibirNovoUsuario = true;
+      });
+    }
   }
 
   Future<void> _verificarELimparUsuarioSeLicencaExpirada() async {
@@ -74,17 +75,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (usuario != null) {
       final expirada = await db.isLicencaExpirada(usuario);
-
       if (expirada) {
-        // Sempre direciona para o CadastroScreen com licença expirada
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => CadastroScreen(licencaExpirada: true),
+            builder: (_) => const CadastroScreen(licencaExpirada: true),
           ),
         );
-        return;
       }
     }
   }
@@ -117,27 +115,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (usuario['confirmado'] != 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Usuário ainda não confirmou o código")),
-      );
-      return;
-    }
-
-    // Verifica se a licença expirou
-    final expirada = await db.isLicencaExpirada(usuario);
-
-    if (expirada) {
-      // Sempre direciona para ConfirmacaoScreen com renovacao: true
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ConfirmacaoScreen(usuario: usuario, renovacao: true),
+          builder: (_) => ConfirmacaoScreen(usuario: usuario, renovacao: false),
         ),
       );
       return;
     }
 
-    // Licença ainda válida → entra normalmente
+    final expirada = await db.isLicencaExpirada(usuario);
+    if (expirada) {
+      // ALTERAÇÃO: O fluxo correto é ir para a tela de Cadastro, que vai mostrar o pop-up de renovação.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CadastroScreen(licencaExpirada: true),
+        ),
+      );
+      return;
+    }
+
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -152,47 +150,41 @@ class _LoginScreenState extends State<LoginScreen> {
     if (ultimoUsuario != null) {
       final expirada = await db.isLicencaExpirada(ultimoUsuario);
       if (!expirada) {
-        // Licença ainda válida, mas força a renovação somente com "Sim"
         showDialog(
           context: context,
-          barrierDismissible: true,
           builder: (_) {
             final dataValidade = DateTime.parse(
               ultimoUsuario['data_validade'],
             ).toLocal();
             final dataFormatada =
-                "${dataValidade.day.toString().padLeft(2, '0')}/"
-                "${dataValidade.month.toString().padLeft(2, '0')}/"
-                "${dataValidade.year}";
-
+                "${dataValidade.day.toString().padLeft(2, '0')}/${dataValidade.month.toString().padLeft(2, '0')}/${dataValidade.year}";
             return AlertDialog(
               title: const Text("Licença ativa"),
-              content: Text("Licença válida até: $dataFormatada"),
+              content: Text(
+                "Sua licença está válida até $dataFormatada.\n\nPara acessar, entre com seu nome de usuário e senha.",
+              ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text("OK"),
                 ),
               ],
             );
           },
         );
-
         return;
       }
     }
 
-    // Nenhum usuário ou licença expirada → criar novo usuário
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => NovoUsuarioScreen()),
+      MaterialPageRoute(builder: (_) => const NovoUsuarioScreen()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // ... (O restante do código do build permanece o mesmo)
     return Scaffold(
       backgroundColor: Colors.blueGrey[50],
       body: Center(
@@ -204,8 +196,12 @@ class _LoginScreenState extends State<LoginScreen> {
               Stack(
                 alignment: Alignment.center,
                 children: [
-                  Icon(Icons.calculate, size: 80, color: Colors.blueAccent),
-                  Positioned(
+                  const Icon(
+                    Icons.calculate,
+                    size: 80,
+                    color: Colors.blueAccent,
+                  ),
+                  const Positioned(
                     right: 0,
                     bottom: 0,
                     child: Icon(
@@ -243,12 +239,22 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 20),
               TextField(
                 controller: _passwordController,
-                obscureText: true,
+                obscureText: !_senhaVisivel,
                 decoration: InputDecoration(
                   labelText: "Senha",
                   filled: true,
                   fillColor: Colors.white,
                   prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _senhaVisivel ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _senhaVisivel = !_senhaVisivel;
+                      });
+                    },
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,

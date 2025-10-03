@@ -6,14 +6,14 @@ import 'custo_comercial_screen.dart';
 import 'faturamento_screen.dart';
 import 'lucro_screen.dart';
 import 'login_screen.dart';
+import 'ajuda_screen.dart';
 import '../db/database_helper.dart';
-import '../screens/confirmacao_screen.dart';
-import '../utils/codigo_helper.dart';
-import '../utils/pix_utils.dart';
-import '../utils/email_helper.dart';
+import 'confirmacao_screen.dart';
+import '../utils/api_service.dart';
+import 'novo_usuario_screen.dart';
 
 class CadastroScreen extends StatefulWidget {
-  final bool licencaExpirada; // <-- novo parâmetro
+  final bool licencaExpirada;
 
   const CadastroScreen({Key? key, this.licencaExpirada = false})
     : super(key: key);
@@ -28,54 +28,19 @@ class _CadastroScreenState extends State<CadastroScreen> {
   @override
   void initState() {
     super.initState();
-
-    // 1️⃣ Se o usuário veio do login com licença expirada, mostra o diálogo imediatamente
     if (widget.licencaExpirada) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _mostrarAlertaRenovacaoComLicencaExpirada();
       });
     }
-
-    // 2️⃣ Sempre verifica imediatamente e depois a cada 10 minutos
-    _verificarLicenca();
-    _verificadorLicenca = Timer.periodic(
-      const Duration(minutes: 10),
-      (_) => _verificarLicenca(),
-    );
+    // A verificação periódica pode ser simplificada ou removida
+    // se o fluxo de login já trata a expiração de forma robusta.
   }
 
-  Future<void> _verificarLicenca() async {
+  Future<void> _mostrarAlertaRenovacaoComLicencaExpirada() async {
     final db = DatabaseHelper.instance;
-    final usuario = await db.buscarUltimaLicencaValida();
-    if (usuario == null) return;
-
-    final dataLiberacaoStr = usuario['data_liberacao']?.toString() ?? '';
-    if (dataLiberacaoStr.isEmpty) return;
-
-    final dataLiberacao = DateTime.parse(dataLiberacaoStr).toUtc();
-    final expiraEmUtc = dataLiberacao.add(
-      Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
-    );
-
-    final agoraUtc = DateTime.now().toUtc();
-
-    print("dataLiberacao: $dataLiberacao");
-    print("agoraUtc: $agoraUtc");
-    print("expiraEmUtc: $expiraEmUtc");
-
-    final duracaoRestante = expiraEmUtc.difference(agoraUtc);
-    if (duracaoRestante.isNegative) {
-      _mostrarAlertaRenovacao(usuario);
-    } else {
-      Future.delayed(duracaoRestante, () {
-        _mostrarAlertaRenovacao(usuario);
-      });
-    }
-  }
-
-  void _mostrarAlertaRenovacaoComLicencaExpirada() async {
-    final db = DatabaseHelper.instance;
-    final usuario = await db.buscarUltimaLicencaValida();
+    // Busca o último usuário, mesmo que a licença esteja expirada, para obter os dados.
+    final usuario = await db.buscarUltimoUsuario();
     if (usuario != null) {
       _mostrarAlertaRenovacao(usuario);
     }
@@ -86,25 +51,22 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
     showDialog(
       context: context,
-      barrierDismissible:
-          false, // usuário não pode fechar sem escolher "Renovar"
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
+        title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            const SizedBox(width: 10),
-            const Text(
+            SizedBox(width: 10),
+            Text(
               "Licença expirada",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
             ),
           ],
         ),
         content: const Text(
-          "Sua licença expirou.\n"
-          "Valor da renovação: R\$ 15,00 por 30 dias.\n\n"
-          "Deseja renovar a licença para continuar usando o app?",
+          "Sua licença expirou.\nValor da renovação: R\$ 15,00 por 30 dias.\n\nDeseja renovar a licença para continuar usando o app?",
           style: TextStyle(fontSize: 16, height: 1.5),
         ),
         actions: [
@@ -117,38 +79,72 @@ class _CadastroScreenState extends State<CadastroScreen> {
               ),
             ),
             onPressed: () async {
-              print("✅ Usuário clicou em Renovar");
+              // --- INÍCIO DO NOVO FLUXO DE RENOVAÇÃO ---
+              print("✅ Usuário clicou em Renovar. Iniciando fluxo de API.");
 
-              final db = DatabaseHelper.instance;
-
-              print("🔹 Chamando resetarUsuarioExpirado com usuário: $usuario");
-              final novoUsuario = await db.resetarUsuarioExpirado(usuario);
-              print(
-                "🔹 resetarUsuarioExpirado terminou, novoUsuario: $novoUsuario",
-              );
-
-              // Enviar email para administrador
-              await EmailHelper.enviarEmailAdmin(
-                nome: novoUsuario['usuario'] ?? '',
-                email: novoUsuario['email'] ?? '',
-                celular: novoUsuario['celular'] ?? '',
-                codigoLiberacao: novoUsuario['codigo_liberacao'] ?? '',
-                identificador: PixUtils.gerarIdentificador(novoUsuario),
-              );
-              print("📧 Email enviado para administrador");
-
-              // Fecha o diálogo
+              // 1. Fecha o diálogo atual
               Navigator.of(context).pop();
 
-              // Vai para tela de confirmação
-              if (!mounted) return;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      ConfirmacaoScreen(usuario: novoUsuario, renovacao: false),
-                ),
+              // 2. Chama a API para registrar o cliente novamente no servidor
+              // CORREÇÃO CRÍTICA: Sincronizando os nomes dos argumentos com a ApiService.dart
+              final resultadoApi = await ApiService.registrarCliente(
+                // O campo 'usuario' do DB local é mapeado para o nome principal/Razão Social
+                nomeFiscal: usuario['usuario'] ?? '',
+                // Para 'nomeUsuario', assumimos que é o mesmo valor do nome principal
+                // ou que o campo 'nome' não existe no DB local, usando 'usuario' como fallback.
+                nomeUsuario: usuario['usuario'] ?? '',
+                email: usuario['email'] ?? '',
+                celular: usuario['celular'] ?? '',
+                // DADOS FISCAIS
+                cpfCnpj: usuario['cpfCnpj'] ?? '',
+                cep: usuario['cep'] ?? '',
+                logradouro: usuario['logradouro'] ?? '',
+                numero: usuario['numero'] ?? '',
+                complemento: usuario['complemento'] ?? '',
+                bairro: usuario['bairro'] ?? '',
+                cidade: // Corrigido para ser 'cidade'
+                    usuario['cidade'] ?? '',
+                uf: // Corrigido para ser 'uf'
+                    usuario['uf'] ?? '',
               );
+
+              if (!mounted) return;
+
+              if (resultadoApi['success']) {
+                final novoIdentificador = resultadoApi['data']['identificador'];
+                print(
+                  "🔹 Cliente registrado para renovação. Novo identificador: $novoIdentificador",
+                );
+
+                // 3. Atualiza o usuário LOCAL com o novo identificador e reseta a licença
+                final db = DatabaseHelper.instance;
+                final usuarioAtualizado = await db.resetarUsuarioParaRenovacao(
+                  usuario,
+                  novoIdentificador,
+                );
+
+                // 4. Vai para a tela de confirmação com os dados atualizados
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ConfirmacaoScreen(
+                      usuario: usuarioAtualizado,
+                      renovacao: true,
+                    ),
+                  ),
+                );
+              } else {
+                // Se a API falhar, mostra um erro
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      resultadoApi['message'] ?? 'Falha ao iniciar renovação.',
+                    ),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+              // --- FIM DO NOVO FLUXO DE RENOVAÇÃO ---
             },
             child: const Text(
               "Renovar",
@@ -166,7 +162,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
   void _logout(BuildContext context) {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => LoginScreen()),
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
     );
   }
 
@@ -178,9 +174,10 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ... (O restante do código do build permanece o mesmo)
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Cadastro"),
+        title: const Text("Início"),
         backgroundColor: Colors.blueGrey[700],
         centerTitle: true,
         actions: [
@@ -198,13 +195,13 @@ class _CadastroScreenState extends State<CadastroScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.all(16),
         children: [
           _buildTile(
             context,
             icon: Icons.inventory,
             title: "Produtos",
-            subtitle: "Cadastro de produtos",
+            subtitle: "Cadastrar produtos e serviços",
             onTap: () {
               Navigator.push(
                 context,
@@ -216,7 +213,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
             context,
             icon: Icons.business,
             title: "Custo Fixo",
-            subtitle: "Cadastro de custos fixos",
+            subtitle: "Cadastrar custos fixos mensais",
             onTap: () {
               Navigator.push(
                 context,
@@ -228,7 +225,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
             context,
             icon: Icons.attach_money,
             title: "Custo Comercial",
-            subtitle: "Cadastro de custos comerciais",
+            subtitle: "Cadastrar custos por venda",
             onTap: () {
               Navigator.push(
                 context,
@@ -240,7 +237,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
             context,
             icon: Icons.receipt_long,
             title: "Faturamento",
-            subtitle: "Cadastro de faturamento",
+            subtitle: "Registrar vendas e faturamento",
             onTap: () {
               Navigator.push(
                 context,
@@ -252,11 +249,23 @@ class _CadastroScreenState extends State<CadastroScreen> {
             context,
             icon: Icons.account_balance_wallet,
             title: "Lucro",
-            subtitle: "Cadastro de lucro",
+            subtitle: "Analisar lucro e resultados",
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => LucroScreen()),
+                MaterialPageRoute(builder: (_) => const LucroScreen()),
+              );
+            },
+          ),
+          _buildTile(
+            context,
+            icon: Icons.help_outline,
+            title: "Precisa de ajuda?",
+            subtitle: "Clique aqui para suporte",
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => AjudaScreen()),
               );
             },
           ),
@@ -272,31 +281,21 @@ class _CadastroScreenState extends State<CadastroScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return Column(
-      children: [
-        ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.blueGrey[100],
-            child: Icon(icon, color: Colors.blueGrey[800]),
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.arrow_forward_ios),
-          onTap: onTap,
-          tileColor: Colors.blueGrey[50],
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 8,
-          ),
+    return Card(
+      elevation: 2.0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.blueGrey[100],
+          child: Icon(icon, color: Colors.blueGrey[800]),
         ),
-        const SizedBox(height: 8),
-      ],
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
     );
   }
 }

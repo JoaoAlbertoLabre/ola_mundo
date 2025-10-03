@@ -1,10 +1,11 @@
+// lib/screens/confirmacao_screen.dart
+// Versão com a correção final na chamada do Navigator e uso do TXID.
+
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import 'login_screen.dart';
-import '../utils/codigo_helper.dart';
-import '../utils/email_helper.dart';
-import '../utils/pix_utils.dart';
-import '../models/usuario_model.dart';
+import '../utils/api_service.dart';
 import '../screens/pix_qr_screen.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
@@ -12,13 +13,13 @@ const Color primaryColor = Color(0xFF81D4FA);
 class ConfirmacaoScreen extends StatefulWidget {
   final Map<String, dynamic> usuario;
   final bool renovacao;
-  final bool jaMostrouAlerta; // novo flag
+  final bool jaMostrouAlerta;
 
   const ConfirmacaoScreen({
     Key? key,
     required this.usuario,
     this.renovacao = false,
-    this.jaMostrouAlerta = false, // padrão false
+    this.jaMostrouAlerta = false,
   }) : super(key: key);
 
   @override
@@ -30,31 +31,164 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
   final db = DatabaseHelper.instance;
 
   late Map<String, dynamic> usuarioAtual;
-  late bool isRenovacao;
+  bool _isLoading = false;
+  bool _isGerandoQrCode = false;
 
   @override
   void initState() {
     super.initState();
     usuarioAtual = widget.usuario;
-    isRenovacao = widget.renovacao;
+    // O ideal é que o TXID e Identificador completos já venham no widget.usuario
   }
 
-  // Função para gerar identificador baseado em celular ou email
-  String gerarIdentificador(Map<String, dynamic> usuario) {
-    final celular = usuario['celular'] as String?;
-    final email = usuario['email'] as String?;
+  void _mostrarSnackBar(String mensagem, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+      ),
+    );
+  }
 
-    if (celular != null && celular.isNotEmpty) {
-      return "CEL_${celular}";
-    } else if (email != null && email.isNotEmpty) {
-      return "EMAIL_${email.substring(0, email.length > 20 ? 20 : email.length)}";
+  Future<void> _gerarQrCodeENavegar() async {
+    if (_isGerandoQrCode) return;
+    setState(() => _isGerandoQrCode = true);
+
+    final txidParaCobranca =
+        usuarioAtual['txid'] ?? usuarioAtual['identificador'];
+
+    if (txidParaCobranca == null || txidParaCobranca.toString().isEmpty) {
+      //if (txidParaCobranca == null) {
+      _mostrarSnackBar(
+        "Identificador (TXID) do usuário não encontrado. Certifique-se de que o registro foi concluído.",
+        isError: true,
+      );
+      setState(() => _isGerandoQrCode = false);
+      return;
+    }
+
+    // Passamos o TXID longo, que o Flask agora espera na rota de cobrança
+    final resultado = await ApiService.criarCobranca(txidParaCobranca);
+    if (!mounted) return;
+
+    if (resultado['success']) {
+      final String qrCodeData = resultado['data']['qrCode'];
+      // Você pode querer salvar o QR Code Data no DB local aqui, se necessário.
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PixQRCodeScreen(qrCode: qrCodeData)),
+      );
     } else {
-      return "USUARIO_SEM_DADOS";
+      _mostrarSnackBar(
+        resultado['message'] ?? "Não foi possível gerar o QR Code.",
+        isError: true,
+      );
+    }
+
+    setState(() => _isGerandoQrCode = false);
+  }
+
+  Future<void> _confirmarCodigoAPI() async {
+    if (_isLoading) return;
+    final codigoDigitado = _codigoController.text.trim();
+    if (codigoDigitado.isEmpty) {
+      _mostrarSnackBar("Digite o código de liberação", isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final resultado = await ApiService.confirmarCodigo(codigoDigitado);
+    setState(() => _isLoading = false);
+
+    if (!mounted) return;
+
+    if (resultado['success']) {
+      await db.atualizarUsuario({'id': usuarioAtual['id'], 'confirmado': 1});
+      _mostrarSnackBar(resultado['message']);
+      await Future.delayed(const Duration(milliseconds: 500));
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } else {
+      _mostrarSnackBar(resultado['message'], isError: true);
     }
   }
 
-  // Widget que exibe as informações do PIX, incluindo o identificador
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Confirmação"),
+        automaticallyImplyLeading: false,
+      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 8),
+                const Text(
+                  "Faça pagamento via PIX e aguarde o administrador liberar o código.",
+                  style: TextStyle(fontSize: 16, color: Colors.black87),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                _buildPixInfo(usuarioAtual),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _isGerandoQrCode ? null : _gerarQrCodeENavegar,
+                  child: _isGerandoQrCode
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.0,
+                          ),
+                        )
+                      : const Text('Gerar QR Code Pix'),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _codigoController,
+                  decoration: InputDecoration(
+                    labelText: "Digite o código recebido",
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _confirmarCodigoAPI,
+                  child: const Text("Confirmar"),
+                ),
+              ],
+            ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPixInfo(Map<String, dynamic> usuario) {
+    // CORREÇÃO: Exibe o TXID (ID longo) que é o dado correto para rastreamento.
+    final txid = usuario['txid'] ?? usuario['identificador'];
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -63,7 +197,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
             "LICENÇA NOVA - Validade 30 dias:",
@@ -77,115 +211,16 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
           ),
           const SizedBox(height: 8),
           const Text("Para fazer o PIX basta gerar o QR Code"),
-          const Text("Valor: 15,00"),
           const Text("Favorecido: JEA Software Company"),
-          const Text("E-mail para contato: vendocerto25@gmail.com"),
           const SizedBox(height: 8),
           Text(
-            "Identificador: ${gerarIdentificador(usuario)}",
+            "Identificador TXID: ${txid ?? 'N/D'}",
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.red,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Confirmação"),
-        automaticallyImplyLeading: false, // remove a seta de voltar
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 8),
-            const Text(
-              "Faça pagamento via PIX e aguarde o administrador liberar o código.",
-              style: TextStyle(fontSize: 16, color: Colors.black87),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            _buildPixInfo(usuarioAtual), // informações do Pix
-
-            const SizedBox(height: 16),
-            // 🔹 Botão para gerar QR Code Pix
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        PixQRCodeScreen(usuario: usuarioAtual, valor: 15.0),
-                  ),
-                );
-              },
-              child: const Text('Gerar QR Code Pix'),
-            ),
-
-            const SizedBox(height: 24),
-            // TextField para digitar o código de liberação
-            TextField(
-              controller: _codigoController,
-              decoration: InputDecoration(
-                labelText: "Digite o código recebido",
-                filled: true,
-                fillColor: Colors.grey[100],
-                labelStyle: const TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Botão Confirmar código
-            ElevatedButton(
-              onPressed: () async {
-                final codigoDigitado = _codigoController.text.trim();
-
-                if (codigoDigitado.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Digite o código de liberação"),
-                    ),
-                  );
-                  return;
-                }
-
-                if (codigoDigitado == usuarioAtual['codigo_liberacao']) {
-                  await db.atualizarUsuario({
-                    'id': usuarioAtual['id'],
-                    'confirmado': 1,
-                  });
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Código confirmado!")),
-                  );
-
-                  await Future.delayed(const Duration(milliseconds: 500));
-
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => LoginScreen()),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Código incorreto, tente novamente"),
-                    ),
-                  );
-                }
-              },
-              child: const Text("Confirmar"),
-            ),
-          ],
-        ),
       ),
     );
   }

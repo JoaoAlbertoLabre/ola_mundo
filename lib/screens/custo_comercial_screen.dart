@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/custo_comercial_model.dart';
 
-const Color primaryColor = Color(0xFF81D4FA); // Azul suave
+const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
+const Color buttonBege = Color(0xFFF5F5DC); // Bege claro para botões de inserir
 
 class CustoComercialScreen extends StatefulWidget {
   const CustoComercialScreen({Key? key}) : super(key: key);
@@ -65,10 +66,27 @@ class _CustoComercialScreenState extends State<CustoComercialScreen> {
         child: Column(
           children: [
             if (custos.isEmpty)
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-                onPressed: () => abrirForm(),
-                child: const Text('Inserir Custo Comercial'),
+              Center(
+                child: SizedBox(
+                  width: 220,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: buttonBege,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => abrirForm(),
+                    child: const Text(
+                      'Inserir Custo Comercial',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             if (custos.isNotEmpty)
               Row(
@@ -158,7 +176,7 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: label,
-          suffixText: '% ',
+          suffixText: '%',
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
