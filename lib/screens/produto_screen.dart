@@ -1,8 +1,10 @@
-// === Tela principal de Produtos ===
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- 1. Importado
+import 'package:intl/intl.dart'; // <-- 2. Importado
 import '../db/database_helper.dart';
 import '../models/produtos_model.dart';
 import '../screens/composicao_produto_screen.dart';
+import '../utils/formato_utils.dart'; // <-- 3. Importe seu arquivo
 
 class ProdutoScreen extends StatefulWidget {
   const ProdutoScreen({Key? key}) : super(key: key);
@@ -12,8 +14,8 @@ class ProdutoScreen extends StatefulWidget {
 }
 
 class _ProdutoScreenState extends State<ProdutoScreen> {
+  // ... (suas variáveis e initState permanecem iguais)
   List<Produto> produtos = [];
-
   double totalCustosFixos = 0;
   double faturamento = 0;
   double totalCustoComercial = 0;
@@ -30,7 +32,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
       double fat = await DatabaseHelper.instance.obterFaturamentoMedia();
       double cc = await DatabaseHelper.instance.somarCustoComercial();
       List<Produto> lista = await DatabaseHelper.instance.getProdutos();
-
       setState(() {
         totalCustosFixos = cf;
         faturamento = fat;
@@ -42,6 +43,7 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
     }
   }
 
+  // ... (abrirCadastroProduto permanece igual)
   Future<void> abrirCadastroProduto() async {
     final db = DatabaseHelper.instance;
 
@@ -93,6 +95,12 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // <-- MUDANÇA AQUI: Formatador para a lista de produtos
+    final currencyFormatter = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: 'R\$',
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Produtos"),
@@ -107,7 +115,12 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(
+                12,
+                12,
+                12,
+                80,
+              ), // Espaço para o botão
               itemCount: produtos.length,
               itemBuilder: (context, index) {
                 final p = produtos[index];
@@ -118,10 +131,8 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                     ? 0
                     : totalCustosFixos / faturamento;
                 final cf = venda * indiceCF;
-
                 final indiceCC = totalCustoComercial / 100;
                 final cc = venda * indiceCC;
-
                 final lucro = venda - custo - cf - cc;
                 final percLucro = venda == 0 ? 0 : (lucro / venda * 100);
                 final percCF = venda == 0 ? 0 : (cf / venda * 100);
@@ -146,45 +157,36 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
-
-                        // 1ª linha - Venda
+                        // <-- MUDANÇAS A PARTIR DAQUI: Usando o formatador
                         Text(
-                          'Venda: R\$ ${venda.toStringAsFixed(2)}',
+                          'Venda: ${currencyFormatter.format(venda)}',
                           style: const TextStyle(fontSize: 16),
                         ),
                         const SizedBox(height: 3),
-
-                        // 2ª linha - Lucro
                         Text(
-                          'Lucro: ${percLucro.toStringAsFixed(0)}%   R\$ ${lucro.toStringAsFixed(2)}',
+                          'Lucro: ${percLucro.toStringAsFixed(0)}%   ${currencyFormatter.format(lucro)}',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: Colors.green, // verde para lucro
+                            color: Colors.green,
                           ),
                         ),
                         const SizedBox(height: 3),
-
-                        // 3ª linha - Custo
                         Text(
-                          'Custo: R\$ ${custo.toStringAsFixed(2)}',
+                          'Custo: ${currencyFormatter.format(custo)}',
                           style: const TextStyle(fontSize: 14),
                         ),
                         const SizedBox(height: 3),
-
-                        // 4ª linha - Custo Fixo
                         Text(
-                          'Custo Fixo: ${percCF.toStringAsFixed(0)}%   R\$ ${cf.toStringAsFixed(2)}',
+                          'Custo Fixo: ${percCF.toStringAsFixed(0)}%   ${currencyFormatter.format(cf)}',
                           style: const TextStyle(
                             fontSize: 13,
                             color: Colors.red,
                           ),
                         ),
                         const SizedBox(height: 3),
-
-                        // 5ª linha - Custo Comercial
                         Text(
-                          'Custo Comercial: ${percCC.toStringAsFixed(0)}%   R\$ ${cc.toStringAsFixed(2)}',
+                          'Custo Comercial: ${percCC.toStringAsFixed(0)}%   ${currencyFormatter.format(cc)}',
                           style: const TextStyle(
                             fontSize: 13,
                             color: Colors.red,
@@ -192,7 +194,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                         ),
                       ],
                     ),
-
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -223,24 +224,27 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                 );
               },
             ),
-      floatingActionButton: SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: ElevatedButton.icon(
-          onPressed: abrirCadastroProduto,
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text(
-            "Inserir Novo Produto",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0),
+        child: SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton.icon(
+            onPressed: abrirCadastroProduto,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              "Inserir Novo Produto",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue.withOpacity(0.9),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.withOpacity(0.9),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -250,8 +254,8 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
   }
 }
 
-// === Tela de Formulário para cadastro/edição de Produtos ===
 class ProdutoFormScreen extends StatefulWidget {
+  // ... (construtor permanece o mesmo)
   final Produto? item;
   final double faturamento;
   final double totalCustosFixos;
@@ -276,19 +280,23 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   late TextEditingController _unController;
   late TextEditingController _custoController;
   late TextEditingController _vendaController;
+  String tipoProduto = "Comprado";
 
-  String tipoProduto = "Comprado"; // valor padrão
+  // <-- MUDANÇA AQUI: Formatador para os campos do formulário
+  final currencyFormatter = NumberFormat.currency(locale: 'pt_BR', symbol: '');
 
   @override
   void initState() {
     super.initState();
     _nomeController = TextEditingController(text: widget.item?.nome ?? "");
     _unController = TextEditingController(text: widget.item?.un ?? "");
+
+    // <-- MUDANÇA AQUI: Formata os valores ao carregar
     _custoController = TextEditingController(
-      text: widget.item?.custo?.toString() ?? "",
+      text: currencyFormatter.format(widget.item?.custo ?? 0),
     );
     _vendaController = TextEditingController(
-      text: widget.item?.venda?.toString() ?? "",
+      text: currencyFormatter.format(widget.item?.venda ?? 0),
     );
 
     if (widget.item != null && widget.item!.tipo != null) {
@@ -296,6 +304,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     }
   }
 
+  // ... (dispose permanece o mesmo)
   @override
   void dispose() {
     _nomeController.dispose();
@@ -305,14 +314,21 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     super.dispose();
   }
 
+  // <-- MUDANÇA AQUI: Função para limpar a máscara antes de salvar
+  double _parseCurrency(String text) {
+    if (text.isEmpty) return 0.0;
+    final cleanedText = text.replaceAll('.', '').replaceAll(',', '.');
+    return double.tryParse(cleanedText) ?? 0.0;
+  }
+
   Future<void> _salvarProduto() async {
     final db = DatabaseHelper.instance;
     FocusScope.of(context).unfocus();
-
     if (!_formKey.currentState!.validate()) return;
 
+    // <-- MUDANÇA AQUI: Usa a função _parseCurrency
     double custo = tipoProduto == "Comprado"
-        ? double.tryParse(_custoController.text) ?? 0
+        ? _parseCurrency(_custoController.text)
         : 0;
 
     final ultimoLucro = await db.obterUltimoLucro();
@@ -342,29 +358,32 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           builder: (_) => ComposicaoProdutoScreen(produtoId: produtoId),
         ),
       );
-
       if (custoComposicao != null) {
         produto.custo = custoComposicao;
         await db.atualizarProduto(produto.toMap());
       }
     }
 
-    double venda = double.tryParse(_vendaController.text) ?? 0;
-    if (venda == 0) {
+    // <-- MUDANÇA AQUI: Usa a função _parseCurrency
+    double venda = _parseCurrency(_vendaController.text);
+    if (venda == 0 && widget.faturamento > 0) {
+      // Evita divisão por zero
       final indiceCF = widget.totalCustosFixos / widget.faturamento;
       final indiceCC = widget.totalCustoComercial / 100;
       final indiceLucro = ultimoLucro / 100;
-
       venda = (produto.custo ?? 0) / (1 - (indiceCF + indiceCC + indiceLucro));
     }
 
     produto.venda = venda;
     await db.atualizarProduto(produto.toMap());
-    _vendaController.text = venda.toStringAsFixed(2);
+
+    // <-- MUDANÇA AQUI: Formata o valor calculado antes de exibir
+    _vendaController.text = currencyFormatter.format(venda);
 
     if (mounted) Navigator.pop(context, true);
   }
 
+  // ... (_inputDecoration permanece o mesmo)
   InputDecoration _inputDecoration(String label, {String? hint}) {
     return InputDecoration(
       labelText: label,
@@ -378,7 +397,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.item == null ? "Novo Produto" : "Editar Produto"),
-        backgroundColor: Colors.blue, // garante azul no topo
+        backgroundColor: Colors.blue,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -386,7 +405,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           key: _formKey,
           child: ListView(
             children: [
-              // Nome
               TextFormField(
                 controller: _nomeController,
                 decoration: _inputDecoration("Nome"),
@@ -394,15 +412,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                     value == null || value.isEmpty ? "Informe o nome" : null,
               ),
               const SizedBox(height: 16),
-
-              // Unidade
               TextFormField(
                 controller: _unController,
                 decoration: _inputDecoration("Unidade (ex: kg, un, m, l, pç)"),
               ),
               const SizedBox(height: 16),
-
-              // Tipo de Produto
               const Text(
                 "Tipo de Produto",
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -437,17 +451,21 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Custo
+              // <-- MUDANÇA AQUI: Campo de Custo com formatador
               TextFormField(
                 controller: _custoController,
                 enabled: tipoProduto == "Comprado",
                 decoration: _inputDecoration("Custo"),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  RealInputFormatter(),
+                ],
                 validator: (value) {
                   if (tipoProduto == "Comprado") {
-                    if (value == null || value.isEmpty) {
+                    if (value == null ||
+                        value.isEmpty ||
+                        _parseCurrency(value) == 0) {
                       return "Informe o custo";
                     }
                   }
@@ -456,19 +474,20 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Preço de Venda
+              // <-- MUDANÇA AQUI: Campo de Venda com formatador
               TextFormField(
                 controller: _vendaController,
                 decoration: _inputDecoration(
                   "Preço de Venda",
-                  hint: "Opcional, calculo automatico",
+                  hint: "Opcional, cálculo automático",
                 ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  RealInputFormatter(),
+                ],
               ),
               const SizedBox(height: 20),
-
               ElevatedButton(
                 onPressed: _salvarProduto,
                 style: ElevatedButton.styleFrom(

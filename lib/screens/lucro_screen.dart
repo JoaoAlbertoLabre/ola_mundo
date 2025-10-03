@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- 1. Importado
+import 'package:intl/intl.dart'; // <-- 2. Importado
 import '../db/database_helper.dart';
 import '../models/lucro_model.dart';
+import '../utils/formato_utils.dart'; // <-- 3. Importe seu arquivo
 
-const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
+const Color primaryColor = Color(0xFF81D4FA);
 
 const List<String> nomesMeses = [
   'Janeiro',
@@ -32,6 +35,7 @@ class _LucroScreenState extends State<LucroScreen> {
   final db = DatabaseHelper.instance;
   List<Lucro> lucros = [];
 
+  // ... (initState, carregarLucros, deletarLucro, abrirForm permanecem iguais)
   @override
   void initState() {
     super.initState();
@@ -52,10 +56,8 @@ class _LucroScreenState extends State<LucroScreen> {
 
   void abrirForm({Lucro? item}) async {
     if (lucros.isEmpty && item == null) {
-      // Primeiro lucro
       final faturamentos = await db.listarFaturamentos();
       if (faturamentos.isEmpty) {
-        // Mostra alerta
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -71,11 +73,9 @@ class _LucroScreenState extends State<LucroScreen> {
             ],
           ),
         );
-        return; // Sai da função, não abre o form
+        return;
       }
     }
-
-    // Se não for o primeiro lucro ou já existe faturamento, abre o form
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => LucroForm(item: item)),
@@ -93,6 +93,12 @@ class _LucroScreenState extends State<LucroScreen> {
   @override
   Widget build(BuildContext context) {
     double total = calcularTotalPercentual();
+    // <-- MUDANÇA AQUI: Formatador para exibir o valor em R$
+    final currencyFormatter = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: 'R\$',
+    );
+    final decimalFormatter = NumberFormat("#,##0.00", "pt_BR");
 
     return Scaffold(
       appBar: AppBar(
@@ -110,9 +116,6 @@ class _LucroScreenState extends State<LucroScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            if (lucros.isEmpty)
-              if (lucros.isEmpty) SizedBox.shrink(),
-
             if (lucros.isNotEmpty)
               Expanded(
                 child: Column(
@@ -121,7 +124,7 @@ class _LucroScreenState extends State<LucroScreen> {
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         Text(
-                          'Total Percentual: ${total.toStringAsFixed(2)}%',
+                          'Total Percentual: ${decimalFormatter.format(total)}%',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -139,9 +142,9 @@ class _LucroScreenState extends State<LucroScreen> {
                             itemCount: lucros.length,
                             itemBuilder: (context, index) {
                               final l = lucros[index];
-
                               double valorCalculado = 0;
                               if (faturamentos.isNotEmpty) {
+                                // ... (sua lógica de cálculo permanece a mesma)
                                 final ultimos = faturamentos.reversed
                                     .take(12)
                                     .toList();
@@ -184,7 +187,7 @@ class _LucroScreenState extends State<LucroScreen> {
                                   Padding(
                                     padding: const EdgeInsets.only(left: 16),
                                     child: Text(
-                                      'Percentual: ${l.percentual.toStringAsFixed(2)}%',
+                                      'Percentual: ${decimalFormatter.format(l.percentual)}%',
                                     ),
                                   ),
                                   Padding(
@@ -193,7 +196,8 @@ class _LucroScreenState extends State<LucroScreen> {
                                       bottom: 8,
                                     ),
                                     child: Text(
-                                      'Valor: R\$ ${valorCalculado.toStringAsFixed(2)}',
+                                      // <-- MUDANÇA AQUI: Usa o formatador de moeda
+                                      'Valor: ${currencyFormatter.format(valorCalculado)}',
                                     ),
                                   ),
                                 ],
@@ -213,7 +217,6 @@ class _LucroScreenState extends State<LucroScreen> {
   }
 }
 
-// === Formulário de cadastro/edição de Lucro ===
 class LucroForm extends StatefulWidget {
   final Lucro? item;
   const LucroForm({Key? key, this.item}) : super(key: key);
@@ -235,11 +238,16 @@ class _LucroFormState extends State<LucroForm> {
     if (widget.item != null) {
       mesCtrl.text = widget.item!.mesNome;
       anoCtrl.text = widget.item!.ano.toString();
-      campoCtrl.text = widget.item!.percentual.toStringAsFixed(2);
-      tipoSelecionado = TipoEntrada.percentual; // default
+      // <-- MUDANÇA AQUI: Formata o percentual ao carregar
+      campoCtrl.text = NumberFormat(
+        "##0.00",
+        "pt_BR",
+      ).format(widget.item!.percentual);
+      tipoSelecionado = TipoEntrada.percentual;
     }
   }
 
+  // ... (selecionarMes e selecionarAno permanecem iguais)
   Future<void> selecionarMes() async {
     final escolhido = await showDialog<int>(
       context: context,
@@ -256,7 +264,6 @@ class _LucroFormState extends State<LucroForm> {
         );
       },
     );
-
     if (escolhido != null) {
       setState(() {
         mesCtrl.text = nomesMeses[escolhido - 1];
@@ -265,7 +272,7 @@ class _LucroFormState extends State<LucroForm> {
   }
 
   Future<void> selecionarAno() async {
-    final anos = List.generate(50, (i) => 2024 + i);
+    final anos = List.generate(50, (i) => DateTime.now().year - i);
     final escolhido = await showDialog<int>(
       context: context,
       builder: (ctx) {
@@ -282,7 +289,6 @@ class _LucroFormState extends State<LucroForm> {
         );
       },
     );
-
     if (escolhido != null) {
       setState(() {
         anoCtrl.text = escolhido.toString();
@@ -290,11 +296,18 @@ class _LucroFormState extends State<LucroForm> {
     }
   }
 
+  // <-- MUDANÇA AQUI: Função para limpar a máscara antes de salvar
+  double _parseValue(String text) {
+    if (text.isEmpty) return 0.0;
+    final cleanedText = text.replaceAll('.', '').replaceAll(',', '.');
+    return double.tryParse(cleanedText) ?? 0.0;
+  }
+
   Future<void> salvarOuAtualizar() async {
     final mesIndex = nomesMeses.indexOf(mesCtrl.text) + 1;
     double percentual = 0;
 
-    // Calcular percentual baseado no tipo selecionado
+    // ... (sua lógica de cálculo permanece a mesma)
     final faturamentos = await db.listarFaturamentos();
     double mediaFaturamento = 0;
     if (faturamentos.isNotEmpty) {
@@ -306,11 +319,12 @@ class _LucroFormState extends State<LucroForm> {
           ultimos.length;
     }
 
+    // <-- MUDANÇA AQUI: Usa a função _parseValue para ler o campo
+    final valorDigitado = _parseValue(campoCtrl.text);
+
     if (tipoSelecionado == TipoEntrada.percentual) {
-      percentual = double.tryParse(campoCtrl.text.replaceAll(',', '.')) ?? 0;
+      percentual = valorDigitado;
     } else {
-      final valorDigitado =
-          double.tryParse(campoCtrl.text.replaceAll(',', '.')) ?? 0;
       if (mediaFaturamento > 0) {
         percentual = (valorDigitado / mediaFaturamento) * 100;
       }
@@ -330,7 +344,6 @@ class _LucroFormState extends State<LucroForm> {
     } else {
       await db.atualizarLucro(lucro.toMap());
     }
-
     Navigator.pop(context);
   }
 
@@ -346,11 +359,7 @@ class _LucroFormState extends State<LucroForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Exemplo de uso 5.00 é igual a 5.00%',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+            // ... (seu layout de data e radio buttons)
             Row(
               children: [
                 Expanded(
@@ -389,6 +398,7 @@ class _LucroFormState extends State<LucroForm> {
                     onChanged: (v) {
                       setState(() {
                         tipoSelecionado = v!;
+                        campoCtrl.clear();
                       });
                     },
                   ),
@@ -401,6 +411,7 @@ class _LucroFormState extends State<LucroForm> {
                     onChanged: (v) {
                       setState(() {
                         tipoSelecionado = v!;
+                        campoCtrl.clear();
                       });
                     },
                   ),
@@ -408,18 +419,28 @@ class _LucroFormState extends State<LucroForm> {
               ],
             ),
             const SizedBox(height: 8),
+
+            // <-- MUDANÇA AQUI: Campo de texto com formatador dinâmico
             TextField(
               controller: campoCtrl,
               keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                // Escolhe o formatador baseado na seleção do usuário
+                if (tipoSelecionado == TipoEntrada.percentual)
+                  DecimalInputFormatter()
+                else
+                  RealInputFormatter(),
+              ],
               decoration: InputDecoration(
                 labelText: tipoSelecionado == TipoEntrada.percentual
                     ? 'Percentual'
                     : 'Valor',
-                prefixText: tipoSelecionado == TipoEntrada.valor
-                    ? 'R\$ '
+                prefixIcon: tipoSelecionado == TipoEntrada.valor
+                    ? const Icon(Icons.attach_money)
                     : null,
-                suffixText: tipoSelecionado == TipoEntrada.percentual
-                    ? '%'
+                suffixIcon: tipoSelecionado == TipoEntrada.percentual
+                    ? const Icon(Icons.percent)
                     : null,
               ),
             ),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- 1. Importado
+import 'package:intl/intl.dart'; // <-- 2. Importado
 import '../db/database_helper.dart';
 import '../models/faturamento_model.dart';
+import '../utils/formato_utils.dart'; // <-- 3. Importe seu arquivo de formatação
 
 const Color primaryColor = Color(0xFF81D4FA); // Azul suave
 const Color buttonBege = Color(0xFFF5F5DC); // Bege claro para botões
@@ -19,20 +22,14 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
   double calcularMediaUltimos12Meses(List<Faturamento> faturamentos) {
     if (faturamentos.isEmpty) return 0.0;
 
-    // Cria uma "data artificial" a partir de ano e mês
     faturamentos.sort((a, b) {
       final dataA = DateTime(a.ano, a.mes);
       final dataB = DateTime(b.ano, b.mes);
-      return dataB.compareTo(dataA); // mais recente primeiro
+      return dataB.compareTo(dataA);
     });
 
-    // Pega no máximo os últimos 12 registros
     final ultimos = faturamentos.take(12).toList();
-
-    // Soma os valores
     final soma = ultimos.fold<double>(0.0, (total, f) => total + f.valor);
-
-    // Calcula a média
     return soma / ultimos.length;
   }
 
@@ -61,13 +58,13 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
     ).then((_) => carregarFaturamentos());
   }
 
-  double calcularTotal() {
-    return faturamentos.fold(0, (sum, f) => sum + f.valor);
-  }
-
   @override
   Widget build(BuildContext context) {
-    double total = calcularTotal();
+    // <-- MUDANÇA AQUI: Cria o formatador para a tela
+    final currencyFormatter = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: 'R\$',
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -84,19 +81,18 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: faturamentos.isEmpty
-            ? const Expanded(
-                child: Center(
-                  child: Text(
-                    "Nenhum faturamento cadastrado",
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
+            ? const Center(
+                child: Text(
+                  "Nenhum faturamento cadastrado",
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
                 ),
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Média do faturamento: R\$ ${calcularMediaUltimos12Meses(faturamentos).toStringAsFixed(2)}',
+                    // <-- MUDANÇA AQUI: Usa o formatador na média
+                    'Média do faturamento: ${currencyFormatter.format(calcularMediaUltimos12Meses(faturamentos))}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -117,7 +113,8 @@ class _FaturamentoScreenState extends State<FaturamentoScreen> {
                           child: ListTile(
                             title: Text('${f.mesNome}/${f.ano}'),
                             subtitle: Text(
-                              'Valor: R\$ ${f.valor.toStringAsFixed(2)}',
+                              // <-- MUDANÇA AQUI: Usa o formatador no valor do item
+                              'Valor: ${currencyFormatter.format(f.valor)}',
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -179,16 +176,21 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
     'Dezembro',
   ];
 
+  // <-- MUDANÇA AQUI: Formatador para preencher o campo na edição
+  final currencyFormatter = NumberFormat.currency(locale: 'pt_BR', symbol: '');
+
   @override
   void initState() {
     super.initState();
     if (widget.item != null) {
       mesCtrl.text = nomesMeses[widget.item!.mes - 1];
       anoCtrl.text = widget.item!.ano.toString();
-      valorCtrl.text = widget.item!.valor.toStringAsFixed(2);
+      // <-- MUDANÇA AQUI: Formata o valor ao carregar
+      valorCtrl.text = currencyFormatter.format(widget.item!.valor);
     }
   }
 
+  // ... (funções selecionarMes e selecionarAno permanecem iguais)
   Future<void> selecionarMes() async {
     final escolhido = await showDialog<int>(
       context: context,
@@ -207,7 +209,7 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
   }
 
   Future<void> selecionarAno() async {
-    final anos = List.generate(50, (i) => 2024 + i);
+    final anos = List.generate(50, (i) => DateTime.now().year - i);
     final escolhido = await showDialog<int>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -224,6 +226,14 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
     );
     if (escolhido != null) anoCtrl.text = escolhido.toString();
   }
+  // ...
+
+  // <-- MUDANÇA AQUI: Função auxiliar para limpar a máscara
+  double _parseCurrency(String text) {
+    if (text.isEmpty) return 0.0;
+    final cleanedText = text.replaceAll('.', '').replaceAll(',', '.');
+    return double.tryParse(cleanedText) ?? 0.0;
+  }
 
   Future<void> salvarOuAtualizar() async {
     final mesIndex = nomesMeses.indexOf(mesCtrl.text) + 1;
@@ -231,7 +241,8 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
       id: widget.item?.id,
       mes: mesIndex,
       ano: int.tryParse(anoCtrl.text) ?? 0,
-      valor: double.tryParse(valorCtrl.text) ?? 0,
+      // <-- MUDANÇA AQUI: Usa a função para salvar o valor
+      valor: _parseCurrency(valorCtrl.text),
     );
 
     if (widget.item == null) {
@@ -286,9 +297,12 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
             const SizedBox(height: 8),
             TextField(
               controller: valorCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
+              // <-- MUDANÇA AQUI: Teclado e formatadores de entrada
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                RealInputFormatter(),
+              ],
               decoration: const InputDecoration(labelText: 'Valor (R\$)'),
             ),
             const SizedBox(height: 16),

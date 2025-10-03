@@ -1,27 +1,23 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // UpperCaseTextFormatter, formatters
+import 'dart:convert';
+import 'package:http/http.dart' as http; // consulta CEP
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../db/database_helper.dart';
-import 'login_screen.dart';
+import 'confirmacao_screen.dart';
 import '../utils/codigo_helper.dart';
 import '../utils/api_service.dart';
-import 'confirmacao_screen.dart';
 import 'dart:io';
 
 const Color primaryColor = Color(0xFF81D4FA);
+const Color secondaryColor = Color(0xFF03A9F4);
 
-// ATENÇÃO: A constante PRAZO_EXPIRACAO_MINUTOS DEVE SER IMPORTADA
-// (ex: import 'package:app/config/config.dart';)
-// O código abaixo NÃO COMPILARÁ até que você adicione esta constante!
+const String MASK_CPF = '###.###.###-##';
+const String MASK_CNPJ = '##.###.###/####-##';
+const int PRAZO_EXPIRACAO_MINUTOS = 15;
 
 class NovoUsuarioScreen extends StatefulWidget {
-  final Map<String, dynamic>? usuarioPreenchido;
-  final String? codigoRenovacao;
-
-  const NovoUsuarioScreen({
-    super.key,
-    this.usuarioPreenchido,
-    this.codigoRenovacao,
-  });
+  const NovoUsuarioScreen({super.key});
 
   @override
   State<NovoUsuarioScreen> createState() => _NovoUsuarioScreenState();
@@ -30,39 +26,72 @@ class NovoUsuarioScreen extends StatefulWidget {
 class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers existentes
+  // Controllers
   final TextEditingController _usuarioController = TextEditingController();
   final TextEditingController _senhaController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _celularController = TextEditingController();
-
-  // NOVOS CONTROLLERS para NFSe
   final TextEditingController _nomeRazaoSocialController =
-      TextEditingController(); // NOVO: Nome/Razão Social
+      TextEditingController();
   final TextEditingController _cpfCnpjController = TextEditingController();
   final TextEditingController _cepController = TextEditingController();
   final TextEditingController _logradouroController = TextEditingController();
   final TextEditingController _numeroController = TextEditingController();
   final TextEditingController _complementoController = TextEditingController();
   final TextEditingController _bairroController = TextEditingController();
-  final TextEditingController _cidadeController =
-      TextEditingController(); // Município
-  final TextEditingController _ufController =
-      TextEditingController(); // Estado (UF)
+  final TextEditingController _cidadeController = TextEditingController();
+  final TextEditingController _ufController = TextEditingController();
+  // Definição das máscaras no início do State
+  final _cpfMask = MaskTextInputFormatter(
+    mask: '###.###.###-##',
+    filter: {"#": RegExp(r'[0-9]')},
+  );
+
+  final _cnpjMask = MaskTextInputFormatter(
+    mask: '##.###.###/####-##',
+    filter: {"#": RegExp(r'[0-9]')},
+  );
 
   final db = DatabaseHelper.instance;
   bool _isLoading = false;
 
+  // CEP
+  bool _isCepLoading = false;
+  bool _cepPreenchido = false;
+  final _cepMask = MaskTextInputFormatter(
+    mask: '#####-###',
+    filter: {"#": RegExp(r'[0-9]')},
+  );
+
+  // Celular mask
+  final _celularMask = MaskTextInputFormatter(
+    mask: '(##) #####-####',
+    filter: {"#": RegExp(r'[0-9]')},
+  );
+
+  // CPF/CNPJ mask dynamic
+  bool _isCpfSelected = true;
+  MaskTextInputFormatter get _activeCpfCnpjMask {
+    return MaskTextInputFormatter(
+      mask: _isCpfSelected ? MASK_CPF : MASK_CNPJ,
+      filter: {"#": RegExp(r'[0-9]')},
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cepController.addListener(_onCepChanged);
+  }
+
   @override
   void dispose() {
-    // Disposes existentes
+    _cepController.removeListener(_onCepChanged);
     _usuarioController.dispose();
     _senhaController.dispose();
     _emailController.dispose();
     _celularController.dispose();
-
-    // NOVOS Disposes
-    _nomeRazaoSocialController.dispose(); // NOVO Dispose
+    _nomeRazaoSocialController.dispose();
     _cpfCnpjController.dispose();
     _cepController.dispose();
     _logradouroController.dispose();
@@ -71,201 +100,162 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     _bairroController.dispose();
     _cidadeController.dispose();
     _ufController.dispose();
-
     super.dispose();
   }
 
-  // --- Funções de Validação de NOVOS Campos ---
-  String? _validarCpfCnpj(String? value) {
-    if (value == null || value.isEmpty)
-      return "CPF/CNPJ é obrigatório para NFSe";
-    final somenteNumeros = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (somenteNumeros.length != 11 && somenteNumeros.length != 14) {
-      return "CPF (11 dígitos) ou CNPJ (14 dígitos) inválido";
+  // ---------------- CEP ----------------
+  void _onCepChanged() {
+    String cep = _cepController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cep.length == 8) {
+      _buscarCep(cep);
+    } else if (cep.isEmpty) {
+      _limparCamposEndereco(manterCep: true);
     }
+  }
+
+  Future<void> _buscarCep(String cep) async {
+    if (_isCepLoading) return;
+    setState(() => _isCepLoading = true);
+    try {
+      final url = Uri.parse('https://brasilapi.com.br/api/cep/v1/$cep');
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _preencherCamposEndereco(data);
+      } else {
+        _limparCamposEndereco();
+        _showFeedbackSnackbar('CEP não encontrado.', isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _limparCamposEndereco();
+      _showFeedbackSnackbar(
+        'Erro ao buscar CEP. Verifique a conexão.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _isCepLoading = false);
+    }
+  }
+
+  void _preencherCamposEndereco(Map<String, dynamic> data) {
+    setState(() {
+      _logradouroController.text = (data['street'] ?? '') as String;
+      _bairroController.text = (data['neighborhood'] ?? '') as String;
+      _cidadeController.text = (data['city'] ?? '') as String;
+      _ufController.text = (data['state'] ?? '') as String;
+      _cepPreenchido = true;
+    });
+    // foca no número
+    FocusScope.of(context).requestFocus(FocusNode());
+  }
+
+  void _limparCamposEndereco({bool manterCep = false}) {
+    if (!manterCep) _cepController.clear();
+    setState(() {
+      _logradouroController.clear();
+      _numeroController.clear();
+      _complementoController.clear();
+      _bairroController.clear();
+      _cidadeController.clear();
+      _ufController.clear();
+      _cepPreenchido = false;
+    });
+  }
+
+  void _showFeedbackSnackbar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+      ),
+    );
+  }
+
+  // ---------------- Validações ----------------
+  String? _validarCampoObrigatorio(String? value, String nomeCampo) {
+    if (value == null || value.trim().isEmpty) return "Informe o $nomeCampo";
     return null;
+  }
+
+  String? _validarCpfCnpj(String? value) {
+    if (value == null || value.trim().isEmpty)
+      return "CPF/CNPJ é obrigatório para NFSe";
+
+    final somenteNumeros = value.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (_isCpfSelected) {
+      // CPF
+      if (somenteNumeros.length != 11) return "CPF inválido";
+      if (!_validarCpf(somenteNumeros)) return "CPF inválido";
+    } else {
+      // CNPJ
+      if (somenteNumeros.length != 14) return "CNPJ inválido";
+      if (!_validarCnpj(somenteNumeros)) return "CNPJ inválido";
+    }
+
+    return null;
+  }
+
+  // Função para validar CPF
+  bool _validarCpf(String cpf) {
+    if (RegExp(r'^(\d)\1{10}$').hasMatch(cpf)) return false; // todos iguais
+    List<int> digitos = cpf.split('').map(int.parse).toList();
+
+    int calc(int n) {
+      int soma = 0;
+      for (int i = 0; i < n; i++) {
+        soma += digitos[i] * ((n + 1) - i);
+      }
+      int resto = (soma * 10) % 11;
+      return resto == 10 ? 0 : resto;
+    }
+
+    return calc(9) == digitos[9] && calc(10) == digitos[10];
+  }
+
+  // Função para validar CNPJ
+  bool _validarCnpj(String cnpj) {
+    if (RegExp(r'^(\d)\1{13}$').hasMatch(cnpj)) return false; // todos iguais
+    List<int> digitos = cnpj.split('').map(int.parse).toList();
+
+    List<int> multiplicador1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    List<int> multiplicador2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+    int calc(List<int> mult) {
+      int soma = 0;
+      for (int i = 0; i < mult.length; i++) {
+        soma += digitos[i] * mult[i];
+      }
+      int resto = soma % 11;
+      return resto < 2 ? 0 : 11 - resto;
+    }
+
+    return calc(multiplicador1) == digitos[12] &&
+        calc(multiplicador2) == digitos[13];
   }
 
   String? _validarCEP(String? value) {
-    if (value == null || value.isEmpty) return "CEP é obrigatório";
+    if (value == null || value.trim().isEmpty) return "CEP é obrigatório";
     final somenteNumeros = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (somenteNumeros.length != 8) {
-      return "CEP inválido (8 dígitos)";
-    }
+    if (somenteNumeros.length != 8) return "CEP inválido (8 dígitos)";
     return null;
-  }
-
-  String? _validarCampoObrigatorio(String? value, String nomeCampo) {
-    if (value == null || value.isEmpty) return "Informe o $nomeCampo";
-    return null;
-  }
-  // ---------------------------------------------
-
-  // Em novo_usuario_screen.dart
-
-  Future<void> _cadastrarUsuario() async {
-    print("🚀 Iniciando _cadastrarUsuario, _isLoading=$_isLoading");
-    if (_isLoading) return; // Previne múltiplos cliques
-    print("⚠️ Saindo porque já está carregando...");
-    // Validações combinadas (Contato + Formulário)
-    final contatoErro = _validarContatoObrigatorio();
-    print("🔎 contatoErro=$contatoErro");
-    if (contatoErro != null) {
-      print("❌ Falha na validação de contato: $contatoErro");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(contatoErro)));
-      return;
-    }
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-    print("✅ Entrou no fluxo principal, _isLoading=true");
-    try {
-      print("➡️ Chamando ApiService.registrarCliente...");
-      // 1. Envia os dados para o backend registrar o cliente
-      final resultadoApi = await ApiService.registrarCliente(
-        nomeUsuario: _usuarioController.text.trim(),
-        nomeFiscal: _nomeRazaoSocialController.text.trim(),
-        email: _emailController.text.trim(),
-        celular: _celularController.text.trim(),
-        cpfCnpj: _cpfCnpjController.text.trim(),
-        cep: _cepController.text.trim(),
-        logradouro: _logradouroController.text.trim(),
-        numero: _numeroController.text.trim(),
-        complemento: _complementoController.text.trim(),
-        bairro: _bairroController.text.trim(),
-        cidade: _cidadeController.text.trim(),
-        uf: _ufController.text.trim(),
-      );
-      print("✅ Resposta da API: $resultadoApi");
-      if (!mounted) return;
-
-      if (resultadoApi['success']) {
-        print("➡️ Extraindo identificador e txid...");
-        // 2. Se o backend registrou com sucesso, pegamos os IDs
-        final identificadorDoServidor = resultadoApi['identificador'];
-        final txidDoServidor = resultadoApi['txid'];
-        print("✅ identificador=$identificadorDoServidor, txid=$txidDoServidor");
-        if (identificadorDoServidor == null ||
-            identificadorDoServidor.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Erro interno: O servidor não retornou o Identificador do cliente.',
-              ),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-          // Retorna para interromper o fluxo se o dado essencial estiver faltando
-          return;
-        }
-
-        print(
-          "Cliente registrado no servidor. ID: $identificadorDoServidor, TXID: $txidDoServidor",
-        );
-
-        // 3. Monta o mapa de usuário para salvar no banco de dados LOCAL
-        final agoraUtc = DateTime.now().toUtc();
-        final novoUsuarioMap = {
-          'usuario': _usuarioController.text.trim(),
-          'senha': _senhaController.text.trim(),
-          'email': _emailController.text.trim(),
-          'celular': _celularController.text.trim(),
-          'codigo_liberacao': CodigoHelper.gerarCodigo(),
-          'confirmado': 0,
-          'data_liberacao': agoraUtc.toIso8601String(),
-          'data_validade': agoraUtc
-              .add(
-                const Duration(minutes: 15),
-              ) // ATENÇÃO: Verifique o nome da sua constante de prazo
-              .toIso8601String(),
-          'identificador': identificadorDoServidor,
-          'txid': txidDoServidor, // <--- CRÍTICO: Salvar o TXID no DB local
-          'nome_fiscal': _nomeRazaoSocialController.text.trim(),
-          'cpfCnpj': _cpfCnpjController.text.trim(),
-          'cep': _cepController.text.trim(),
-          'logradouro': _logradouroController.text.trim(),
-          'numero': _numeroController.text.trim(),
-          'complemento': _complementoController.text.trim(),
-          'bairro': _bairroController.text.trim(),
-          'cidade': _cidadeController.text.trim(),
-          'uf': _ufController.text.trim(),
-        };
-
-        // 4. Salva no banco de dados local
-        print("➡️ Salvando no banco local...");
-        await db.inserirUsuario(novoUsuarioMap);
-        final usuarioSalvo = await db.buscarUltimoUsuario();
-        print("✅ Usuário salvo com sucesso");
-        // 5. VERIFICA SE O USUÁRIO FOI SALVO LOCALMENTE ANTES DE NAVEGAR
-        if (usuarioSalvo != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ConfirmacaoScreen(
-                usuario: usuarioSalvo,
-              ), // Passa o mapa COMPLETO (com txid)
-            ),
-          );
-        } else {
-          // Se, por algum motivo, não encontrar o usuário local, exibe um erro
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Erro crítico: Não foi possível salvar os dados localmente.',
-              ),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-      } else {
-        // Se a API retornou um erro, mostra a mensagem
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              resultadoApi['message'] ?? 'Erro ao se comunicar com o servidor.',
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    } catch (e) {
-      // Captura qualquer outra exceção inesperada durante o processo
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ocorreu um erro inesperado: ${e.toString()}'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    } finally {
-      // O BLOCO FINALLY GARANTE QUE O LOADING SEMPRE SERÁ DESATIVADO
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   String? _validarEmail(String? value) {
-    if (value == null || value.isEmpty) return null;
+    if (value == null || value.isEmpty)
+      return null; // email opcional? aqui consideramos obrigatório via _validarCampoObrigatorio
     final regex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
     if (!regex.hasMatch(value)) return "E-mail inválido";
     return null;
   }
 
   String? _validarCelular(String? value) {
-    // Linha adicionada para tornar obrigatório
-    if (value == null || value.isEmpty) return "Informe o celular";
-
+    if (value == null || value.trim().isEmpty) return "Informe o celular";
     final somenteNumeros = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (somenteNumeros.length < 10 || somenteNumeros.length > 11) {
+    if (somenteNumeros.length < 10 || somenteNumeros.length > 11)
       return "Celular inválido";
-    }
     return null;
   }
 
@@ -282,6 +272,184 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     return null;
   }
 
+  // ---------------- Toggle CPF/CNPJ ----------------
+  void _toggleCpfCnpj(bool selectCpf) {
+    if (_isCpfSelected != selectCpf) {
+      setState(() {
+        _isCpfSelected = selectCpf;
+        _cpfCnpjController.clear();
+      });
+    }
+  }
+
+  // ---------------- CADASTRO ----------------
+  Future<void> _cadastrarUsuario() async {
+    // evita múltiplos cliques
+    if (_isLoading) {
+      print("Já está carregando. Saindo.");
+      return;
+    }
+
+    // primeiro: valida o form (exibe mensagens vermelhas por campo)
+    if (!_formKey.currentState!.validate()) {
+      print("Form inválido — abortando antes de chamar API.");
+      _showFeedbackSnackbar("Corrija os campos em vermelho.", isError: true);
+      return;
+    }
+
+    // validação extra defensiva do campo usuário (igual ao celular)
+    final usuarioTrim = _usuarioController.text.trim();
+    if (usuarioTrim.isEmpty) {
+      print("Usuário vazio (checagem defensiva) — abortando.");
+      _showFeedbackSnackbar("Usuário (login) é obrigatório.", isError: true);
+      return;
+    }
+
+    // validação combinada de contato
+    final contatoErro = _validarContatoObrigatorio();
+    if (contatoErro != null) {
+      _showFeedbackSnackbar(contatoErro, isError: true);
+      print("Contato inválido: $contatoErro — abortando.");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      // DEBUG: payload antes da API
+      final payloadApi = {
+        "nomeUsuario": usuarioTrim,
+        "nomeFiscal": _nomeRazaoSocialController.text.trim(),
+        "email": _emailController.text.trim(),
+        "celular": _celularController.text.trim(),
+        "cpfCnpj": _cpfCnpjController.text.trim(),
+        "cep": _cepController.text.trim(),
+        "logradouro": _logradouroController.text.trim(),
+        "numero": _numeroController.text.trim(),
+        "complemento": _complementoController.text.trim(),
+        "bairro": _bairroController.text.trim(),
+        "cidade": _cidadeController.text.trim(),
+        "uf": _ufController.text.trim(),
+      };
+      print("➡️ Payload API: $payloadApi");
+
+      final resultadoApi = await ApiService.registrarCliente(
+        nomeUsuario: payloadApi['nomeUsuario']!,
+        nomeFiscal: payloadApi['nomeFiscal']!,
+        email: payloadApi['email']!,
+        celular: payloadApi['celular']!,
+        cpfCnpj: payloadApi['cpfCnpj']!,
+        cep: payloadApi['cep']!,
+        logradouro: payloadApi['logradouro']!,
+        numero: payloadApi['numero']!,
+        complemento: payloadApi['complemento']!,
+        bairro: payloadApi['bairro']!,
+        cidade: payloadApi['cidade']!,
+        uf: payloadApi['uf']!,
+      );
+
+      print("✅ Resultado API: $resultadoApi");
+
+      if (!mounted) return;
+
+      if (resultadoApi['success'] == true) {
+        final identificadorDoServidor =
+            resultadoApi['identificador'] ??
+            (resultadoApi['data'] != null
+                ? resultadoApi['data']['identificador']
+                : null);
+        final txidDoServidor =
+            resultadoApi['txid'] ??
+            (resultadoApi['data'] != null
+                ? resultadoApi['data']['txid']
+                : null);
+
+        if (identificadorDoServidor == null ||
+            identificadorDoServidor.toString().isEmpty) {
+          _showFeedbackSnackbar(
+            'Erro interno: servidor não retornou identificador.',
+            isError: true,
+          );
+          print("Identificador ausente no resultadoApi -> $resultadoApi");
+          return;
+        }
+
+        final agoraUtc = DateTime.now().toUtc();
+        final novoUsuarioMap = {
+          'usuario': usuarioTrim,
+          'senha': _senhaController.text.trim(),
+          'email': _emailController.text.trim(),
+          'celular': _celularController.text.trim(),
+          'codigo_liberacao': CodigoHelper.gerarCodigo(),
+          'confirmado': 0,
+          'data_liberacao': agoraUtc.toIso8601String(),
+          'data_validade': agoraUtc
+              .add(const Duration(minutes: PRAZO_EXPIRACAO_MINUTOS))
+              .toIso8601String(),
+          'identificador': identificadorDoServidor,
+          'txid': txidDoServidor ?? '',
+          'nome_fiscal': _nomeRazaoSocialController.text.trim(),
+          'cpfCnpj': _cpfCnpjController.text.trim(),
+          'cep': _cepController.text.trim(),
+          'logradouro': _logradouroController.text.trim(),
+          'numero': _numeroController.text.trim(),
+          'complemento': _complementoController.text.trim(),
+          'bairro': _bairroController.text.trim(),
+          'cidade': _cidadeController.text.trim(),
+          'uf': _ufController.text.trim(),
+        };
+
+        // DEBUG: confirmar antes de inserir
+        print("➡️ Mapa que será salvo no DB: $novoUsuarioMap");
+
+        if ((novoUsuarioMap['usuario'] ?? '').toString().trim().isEmpty) {
+          _showFeedbackSnackbar(
+            'Erro interno: campo usuario vazio (abortando).',
+            isError: true,
+          );
+          print("Abortando: usuario vazio no mapa antes da inserção.");
+          return;
+        }
+
+        final insertedId = await db.inserirUsuario(novoUsuarioMap);
+        print("✅ Inserção local completada. insertedId=$insertedId");
+
+        final usuarioSalvo = await db.buscarUltimoUsuario();
+        print("🔎 usuarioSalvo do DB: $usuarioSalvo");
+
+        if (usuarioSalvo != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ConfirmacaoScreen(usuario: usuarioSalvo),
+            ),
+          );
+        } else {
+          _showFeedbackSnackbar(
+            'Erro crítico: Não foi possível salvar os dados localmente.',
+            isError: true,
+          );
+          print("Falha: usuarioSalvo == null após inserção.");
+        }
+      } else {
+        _showFeedbackSnackbar(
+          resultadoApi['message'] ?? 'Erro ao se comunicar com o servidor.',
+          isError: true,
+        );
+        print("API retornou sucesso=false -> ${resultadoApi['message']}");
+      }
+    } catch (e, st) {
+      print("❗ Exception em _cadastrarUsuario: $e\n$st");
+      if (mounted)
+        _showFeedbackSnackbar(
+          'Ocorreu um erro inesperado: ${e.toString()}',
+          isError: true,
+        );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ---------------- Widgets helpers ----------------
   Widget _campoTexto({
     required String label,
     required TextEditingController controller,
@@ -289,8 +457,10 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     required IconData icon,
     bool obscure = false,
     String? dica = '',
-    TextInputType keyboardType =
-        TextInputType.text, // Adicionado tipo de teclado
+    TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? formatters,
+    bool enabled = true,
+    Widget? suffixIcon,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,17 +468,75 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
         TextFormField(
           controller: controller,
           obscureText: obscure,
-          keyboardType: keyboardType, // Usando o tipo de teclado
+          keyboardType: keyboardType,
+          inputFormatters: formatters,
+          enabled: enabled,
           decoration: InputDecoration(
             labelText: label,
             hintText: dica,
             prefixIcon: Icon(icon, color: primaryColor),
+            suffixIcon: suffixIcon,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            filled: !enabled,
+            fillColor: Colors.grey[200],
           ),
           validator: validator,
         ),
         const SizedBox(height: 16),
       ],
+    );
+  }
+
+  Widget _buildCpfCnpjToggle() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        children: [
+          _buildToggleButton(
+            label: 'CPF',
+            icon: Icons.person,
+            isSelected: _isCpfSelected,
+            onPressed: () => _toggleCpfCnpj(true),
+          ),
+          const SizedBox(width: 10),
+          _buildToggleButton(
+            label: 'CNPJ',
+            icon: Icons.business,
+            isSelected: !_isCpfSelected,
+            onPressed: () => _toggleCpfCnpj(false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToggleButton({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onPressed,
+  }) {
+    return Expanded(
+      child: ElevatedButton.icon(
+        icon: Icon(icon, color: isSelected ? Colors.white : secondaryColor),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : secondaryColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isSelected ? secondaryColor : Colors.white,
+          side: BorderSide(color: secondaryColor, width: 2),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          elevation: isSelected ? 4 : 0,
+        ),
+      ),
     );
   }
 
@@ -342,6 +570,8 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode
+              .onUserInteraction, // mostra erros no rodapé automaticamente
           child: ListView(
             children: [
               const Icon(Icons.person_add_alt_1, size: 80, color: primaryColor),
@@ -353,40 +583,44 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
               ),
               const SizedBox(height: 20),
 
-              // --- SEÇÃO DE DADOS DE LOGIN E CONTATO ---
+              // Usuário (agora com validator como os outros campos)
               _campoTexto(
-                label: "Usuário (login)*", // Rótulo alterado de "Nome (login)*"
+                label: "Usuário (login)*",
                 controller: _usuarioController,
                 validator: (v) =>
-                    v!.isEmpty ? "Informe o nome de usuário" : null,
+                    _validarCampoObrigatorio(v, "Usuário (login)"),
                 icon: Icons.person,
               ),
+
               _campoTexto(
                 label: "E-mail (Obrigatório)*",
                 controller: _emailController,
                 validator: (v) =>
-                    _validarEmail(v) ?? _validarCampoObrigatorio(v, "E-mail"),
+                    _validarCampoObrigatorio(v, "E-mail") ?? _validarEmail(v),
                 icon: Icons.email,
                 keyboardType: TextInputType.emailAddress,
               ),
               _campoTexto(
                 label: "Celular (Obrigatório)*",
                 controller: _celularController,
-                validator: _validarCelular,
+                validator: (v) =>
+                    _validarCampoObrigatorio(v, "Celular") ??
+                    _validarCelular(v),
                 icon: Icons.phone,
                 keyboardType: TextInputType.phone,
+                formatters: [_celularMask],
               ),
               _campoTexto(
-                label: "Senha",
+                label: "Senha*",
                 controller: _senhaController,
-                validator: _validarSenha,
+                validator: (v) =>
+                    _validarCampoObrigatorio(v, "Senha") ?? _validarSenha(v),
                 icon: Icons.lock,
                 obscure: true,
                 dica: "Mínimo 6 caracteres",
               ),
 
-              const SizedBox(height: 30),
-              // --- SEÇÃO DE DADOS FISCAIS PARA NFSE ---
+              const SizedBox(height: 20),
               const Text(
                 "Dados Fiscais (Tomador) - OBRIGATÓRIO para NFSe",
                 style: TextStyle(
@@ -397,7 +631,6 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
               ),
               const Divider(),
 
-              // NOVO CAMPO: Nome/Razão Social (Primeiro nos Dados Fiscais)
               _campoTexto(
                 label: "Nome/Razão Social*",
                 controller: _nomeRazaoSocialController,
@@ -406,32 +639,46 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
                 icon: Icons.business,
               ),
 
-              // CPF/CNPJ
+              // Definição das máscaras no início do State
+              _buildCpfCnpjToggle(),
               _campoTexto(
-                label: "CPF ou CNPJ*",
+                label: _isCpfSelected
+                    ? "CPF (Pessoa Física)*"
+                    : "CNPJ (Pessoa Jurídica)*",
                 controller: _cpfCnpjController,
                 validator: _validarCpfCnpj,
                 icon: Icons.badge,
-                dica: "Apenas números.",
                 keyboardType: TextInputType.number,
+                formatters: [_isCpfSelected ? _cpfMask : _cnpjMask],
               ),
-              // CEP
+
               _campoTexto(
                 label: "CEP*",
                 controller: _cepController,
                 validator: _validarCEP,
                 icon: Icons.location_on,
-                dica: "Apenas 8 números",
+                dica: "00000-000",
                 keyboardType: TextInputType.number,
+                formatters: [_cepMask],
+                suffixIcon: _isCepLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          height: 10,
+                          width: 10,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
               ),
-              // Logradouro
+
               _campoTexto(
                 label: "Logradouro (Rua/Av.)*",
                 controller: _logradouroController,
                 validator: (v) => _validarCampoObrigatorio(v, "Logradouro"),
                 icon: Icons.signpost,
+                enabled: !_cepPreenchido,
               ),
-              // Número
               _campoTexto(
                 label: "Número*",
                 controller: _numeroController,
@@ -439,35 +686,40 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
                 icon: Icons.numbers,
                 keyboardType: TextInputType.number,
               ),
-              // Complemento (Opcional)
               _campoTexto(
                 label: "Complemento (Opcional)",
                 controller: _complementoController,
                 validator: (v) => null,
                 icon: Icons.home_work,
               ),
-              // Bairro
               _campoTexto(
                 label: "Bairro*",
                 controller: _bairroController,
                 validator: (v) => _validarCampoObrigatorio(v, "Bairro"),
                 icon: Icons.grid_view,
+                enabled: !_cepPreenchido,
               ),
-              // Município
               _campoTexto(
                 label: "Município (Cidade)*",
                 controller: _cidadeController,
                 validator: (v) => _validarCampoObrigatorio(v, "Município"),
                 icon: Icons.location_city,
+                enabled: !_cepPreenchido,
               ),
-              // Estado (UF)
               _campoTexto(
                 label: "Estado (UF)*",
                 controller: _ufController,
                 validator: (v) =>
-                    v!.length != 2 ? 'UF inválida (2 letras)' : null,
+                    _validarCampoObrigatorio(v, "UF") ??
+                    (v!.length != 2 ? 'UF inválida (2 letras)' : null),
                 icon: Icons.flag,
                 dica: "Ex: TO",
+                enabled: !_cepPreenchido,
+                formatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z]')),
+                  LengthLimitingTextInputFormatter(2),
+                  UpperCaseTextFormatter(),
+                ],
               ),
 
               const SizedBox(height: 20),
@@ -475,7 +727,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
                 height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor.withOpacity(0.8),
+                    backgroundColor: primaryColor.withOpacity(0.9),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -492,6 +744,7 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                 ),
@@ -501,6 +754,20 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Força uppercase no TextField
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
     );
   }
 }

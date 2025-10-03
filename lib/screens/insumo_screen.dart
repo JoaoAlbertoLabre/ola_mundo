@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- 1. Importado
+import 'package:intl/intl.dart'; // <-- 2. Importado
 import '../db/database_helper.dart';
 import '../models/insumos_model.dart';
 import 'dart:io';
+import '../utils/formato_utils.dart'; // <-- 3. Importe seu arquivo de formatação
 
 // Cor padrão do sistema
 const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
@@ -35,11 +38,9 @@ class _InsumoScreenState extends State<InsumoScreen> {
   }
 
   Future<void> deletarItem(int id) async {
-    // 1. Verifica se o insumo faz parte de alguma composição
     final produtos = await db.buscarProdutosPorInsumo(id);
 
     if (produtos.isNotEmpty) {
-      // 2. Se estiver em uso, mostra alerta
       final nomesProdutos = produtos.map((p) => p['nome']).join(', ');
       showDialog(
         context: context,
@@ -57,9 +58,8 @@ class _InsumoScreenState extends State<InsumoScreen> {
         ),
       );
     } else {
-      // 3. Se não estiver em uso, deleta normalmente
       await db.deletarInsumo(id);
-      carregarItens(); // Atualiza a lista
+      carregarItens();
     }
   }
 
@@ -72,6 +72,12 @@ class _InsumoScreenState extends State<InsumoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // <-- MUDANÇA AQUI: Cria o formatador para a lista
+    final currencyFormatter = NumberFormat.currency(
+      locale: 'pt_BR',
+      symbol: 'R\$',
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -87,7 +93,6 @@ class _InsumoScreenState extends State<InsumoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Botão Novo só aparece no topo, independente de itens
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -108,7 +113,6 @@ class _InsumoScreenState extends State<InsumoScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            // Se não houver itens, mensagem central
             if (itens.isEmpty)
               Expanded(
                 child: Center(
@@ -140,7 +144,8 @@ class _InsumoScreenState extends State<InsumoScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: Text(
-                          'Un: ${insumo.un ?? "-"} | Valor: R\$ ${insumo.valor?.toStringAsFixed(2) ?? "0.00"}',
+                          // <-- MUDANÇA AQUI: Usa o formatador de moeda
+                          'Un: ${insumo.un ?? "-"} | Valor: ${currencyFormatter.format(insumo.valor ?? 0)}',
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -188,14 +193,25 @@ class _InsumoFormState extends State<InsumoForm> {
   final unCtrl = TextEditingController();
   final valorCtrl = TextEditingController();
 
+  // <-- MUDANÇA AQUI: Formatador para preencher o campo na edição
+  final currencyFormatter = NumberFormat.currency(locale: 'pt_BR', symbol: '');
+
   @override
   void initState() {
     super.initState();
     if (widget.item != null) {
       nomeCtrl.text = widget.item!.nome;
       unCtrl.text = widget.item!.un ?? '';
-      valorCtrl.text = widget.item!.valor?.toString() ?? '';
+      // <-- MUDANÇA AQUI: Formata o valor ao carregar
+      valorCtrl.text = currencyFormatter.format(widget.item!.valor ?? 0);
     }
+  }
+
+  // <-- MUDANÇA AQUI: Função auxiliar para limpar a máscara
+  double? _parseCurrency(String text) {
+    if (text.isEmpty) return null;
+    final cleanedText = text.replaceAll('.', '').replaceAll(',', '.');
+    return double.tryParse(cleanedText);
   }
 
   Future<void> salvarOuAtualizar() async {
@@ -203,7 +219,8 @@ class _InsumoFormState extends State<InsumoForm> {
       id: widget.item?.id,
       nome: nomeCtrl.text,
       un: unCtrl.text.isEmpty ? null : unCtrl.text,
-      valor: double.tryParse(valorCtrl.text),
+      // <-- MUDANÇA AQUI: Usa a função para salvar o valor
+      valor: _parseCurrency(valorCtrl.text),
     );
 
     if (widget.item == null) {
@@ -263,7 +280,12 @@ class _InsumoFormState extends State<InsumoForm> {
             const SizedBox(height: 12),
             TextField(
               controller: valorCtrl,
+              // <-- MUDANÇA AQUI: Teclado e formatadores de entrada
               keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                RealInputFormatter(),
+              ],
               decoration: InputDecoration(
                 labelText: 'Valor',
                 prefixIcon: const Icon(Icons.attach_money, color: primaryColor),
