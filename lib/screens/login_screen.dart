@@ -6,7 +6,11 @@ import 'cadastro_screen.dart';
 import 'novo_usuario_screen.dart';
 import 'confirmacao_screen.dart';
 import 'dart:async';
-// import '../utils/email_helper.dart'; // ALTERAÇÃO: Linha removida pois o arquivo não existe mais
+
+// Credenciais fixas para o avaliador do Google Play.
+// Atenção: Use um nome de arquivo diferente para o build de produção se não quiser que essas credenciais existam.
+const String GOOGLE_REVIEWER_ID = 'google';
+const String GOOGLE_REVIEWER_PASSWORD = 'apprevieweraccess';
 
 const int PRAZO_EXPIRACAO_MINUTOS = 43200; // 30 dias
 
@@ -99,6 +103,19 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // LÓGICA DE ACESSO PARA O AVALIADOR DO GOOGLE PLAY
+    if (nomeDigitado == GOOGLE_REVIEWER_ID &&
+        senha == GOOGLE_REVIEWER_PASSWORD) {
+      if (!mounted) return;
+      // Redireciona diretamente para a tela principal (CadastroScreen)
+      // ignorando todas as verificações de confirmação e licença.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const CadastroScreen()),
+      );
+      return;
+    }
+
     final usuario = await db.buscarUsuarioPorNome(nomeDigitado);
     if (usuario == null) {
       ScaffoldMessenger.of(
@@ -126,7 +143,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final expirada = await db.isLicencaExpirada(usuario);
     if (expirada) {
-      // ALTERAÇÃO: O fluxo correto é ir para a tela de Cadastro, que vai mostrar o pop-up de renovação.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -184,7 +200,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (O restante do código do build permanece o mesmo)
     return Scaffold(
       backgroundColor: Colors.blueGrey[50],
       body: Center(

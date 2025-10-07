@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
@@ -83,7 +82,9 @@ class AjudaScreen extends StatelessWidget {
       "titulo": "Contato",
       "conteudo":
           "E-MAIL DE SUPORTE:\n\n"
-          "suporte@vendocerto.com.br\n\n",
+          "suporte@vendocerto.com.br\n\n"
+          "Pode pedir a exlusão dos seus dados por esse email e sua conta não poderá ser renovada.\n\n"
+          "Lembre-se seus dados são necessários para a emissão das nfs-e.\n\n",
     },
   ];
 
