@@ -1,4 +1,4 @@
-package com.example.ola_mundo
+package com.vendocerto.automacao
 
 import io.flutter.embedding.android.FlutterActivity
 

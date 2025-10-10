@@ -1,7 +1,76 @@
 import 'package:flutter/material.dart';
-import '../db/database_helper.dart';
-import '../models/insumos_model.dart';
-import '../screens/insumo_screen.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
+
+import '../db/database_helper.dart'; // Ajuste o caminho conforme seu projeto
+import '../models/insumos_model.dart'; // Ajuste o caminho conforme seu projeto
+import '../screens/insumo_screen.dart'; // Ajuste o caminho conforme seu projeto
+
+// -----------------------------------------------------------------------------
+// NOVO: TextInputFormatter Personalizado para Milhares e 3 Decimais (Kg/Lt)
+// -----------------------------------------------------------------------------
+class QuantityInputFormatter extends TextInputFormatter {
+  final int decimalDigits = 3;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // 1. Remove todos os caracteres que não são dígitos
+    String newText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (newText.isEmpty) {
+      // Se estiver vazio, retorna o valor base 0,000
+      return TextEditingValue(
+        text: '0,000',
+        selection: TextSelection.collapsed(offset: 5),
+      );
+    }
+
+    // 2. Se a entrada for menor que 4 dígitos, preenche com zeros APENAS
+    // até atingir 4 dígitos para garantir o formato '0,XXX'.
+    while (newText.length <= decimalDigits) {
+      newText = '0' + newText;
+    }
+
+    // 3. Separa a parte inteira (Kg/Lt) da parte decimal (g/ml)
+    final integerPartRaw = newText.substring(0, newText.length - decimalDigits);
+    final decimalPart = newText.substring(newText.length - decimalDigits);
+
+    // 4. Formata a parte inteira (adiciona o separador de milhar: 1.000)
+    final integerPartFormatted = _formatThousands(integerPartRaw);
+
+    // 5. Concatena e forma o texto final (ex: 1.000,012)
+    final formattedText = '$integerPartFormatted,$decimalPart';
+
+    // Retorna o valor formatado, mantendo o cursor no final
+    return TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
+    );
+  }
+
+  // Função auxiliar para formatar a parte inteira com separador de milhar (ponto)
+  String _formatThousands(String s) {
+    // 1. Remove zeros à esquerda. Se a string inteira for '000', retorna '0'.
+    String cleaned = s.replaceFirst(RegExp(r'^0+'), '');
+    if (cleaned.isEmpty) return '0'; // Garante que 000,XXX se torne 0,XXX
+
+    if (cleaned.length <= 3)
+      return cleaned; // Não formata se for menor que 1.000
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < cleaned.length; i++) {
+      buffer.write(cleaned[i]);
+      // Adiciona ponto a cada 3 dígitos (exceto no último grupo)
+      if ((cleaned.length - 1 - i) % 3 == 0 && (cleaned.length - 1 - i) != 0) {
+        buffer.write('.');
+      }
+    }
+    return buffer.toString();
+  }
+}
 
 class ComposicaoProdutoScreen extends StatefulWidget {
   final int produtoId;
@@ -17,6 +86,9 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
   List<Insumo> _insumosDisponiveis = [];
   List<_InsumoSelecionado> _insumosSelecionados = [];
   final TextEditingController _quantidadeCtrl = TextEditingController();
+
+  // Estado para armazenar o valor formatado no AlertDialog
+  String _quantidadeFormatada = '0,000';
 
   @override
   void initState() {
@@ -65,72 +137,155 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
     return total;
   }
 
+  // -----------------------------------------------------------------------------
+  // FUNÇÕES DE CONVERSÃO
+  // -----------------------------------------------------------------------------
+
+  // Converte o texto formatado (ex: '1.000,012') para o REAL (ex: 1000.012)
+  double _getQuantidadeReal(String formattedText) {
+    // 1. Remove o separador de milhar (ponto)
+    final cleanedThousands = formattedText.replaceAll('.', '');
+    // 2. Substitui a vírgula (separador decimal) por ponto
+    final cleanedDecimal = cleanedThousands.replaceAll(',', '.');
+
+    return double.tryParse(cleanedDecimal) ?? 0.0;
+  }
+
+  // Converte a quantidade REAL para a quantidade unitária (ex: 0.012 -> 12)
+  int _getQuantidadeUnitaria(double realQuantity) {
+    // Multiplica por 1000 para converter Kg para gramas ou Litros para ml
+    return (realQuantity * 1000).round();
+  }
+
+  // Converte a quantidade REAL (ex: 0.012) para a string formatada (ex: '0,012')
+  String _toFormattedString(double realQuantity) {
+    // Multiplica por 1000, arredonda e converte para String
+    final unit = (realQuantity * 1000).round();
+    String unitStr = unit.toString();
+
+    // Usa o formatter para garantir que o formato seja consistente (ex: 12 -> 0,012)
+    // Isso é feito simulando a digitação do valor unitário no formatter.
+    return QuantityInputFormatter()
+        .formatEditUpdate(
+          const TextEditingValue(text: ''),
+          TextEditingValue(text: unitStr),
+        )
+        .text;
+  }
+
+  // -----------------------------------------------------------------------------
+  // FUNÇÃO MODIFICADA: _selecionarInsumo
+  // -----------------------------------------------------------------------------
   void _selecionarInsumo(Insumo insumo) {
-    _quantidadeCtrl.clear();
     final selecionadoExistente = _insumosSelecionados.firstWhere(
       (e) => e.insumo.id == insumo.id,
       orElse: () => _InsumoSelecionado(insumo: insumo, quantidade: 0),
     );
 
-    if (selecionadoExistente.quantidade > 0) {
-      _quantidadeCtrl.text = selecionadoExistente.quantidade.toString();
+    // Inicializa o controlador com o valor formatado existente (ou '0,000')
+    _quantidadeFormatada = _toFormattedString(selecionadoExistente.quantidade);
+    _quantidadeCtrl.text = _quantidadeFormatada;
+
+    // Determina a unidade de medida para exibição
+    String unidadeBase = 'Kg';
+    String unidadeUnit = 'g';
+    if (insumo.un != null && insumo.un!.toLowerCase().contains('l')) {
+      unidadeBase = 'Lt';
+      unidadeUnit = 'ml';
     }
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('Quantidade de ${insumo.nome}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _quantidadeCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          // Usamos StatefulBuilder para atualizar apenas o dialog
+          builder: (context, setLocalState) {
+            return AlertDialog(
+              title: Text('Quantidade de ${insumo.nome}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _quantidadeCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      QuantityInputFormatter(), // O novo Formatter
+                    ],
+                    onChanged: (value) {
+                      setLocalState(() {
+                        // Atualiza o estado local para o novo texto
+                        _quantidadeFormatada = value;
+                      });
+                    },
+                    decoration: const InputDecoration(
+                      hintText: 'Digite a quantidade',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Exibição simplificada da quantidade em unidades amigáveis (apenas o valor unitário)
+                  Text(
+                    'Valor atual: ${_getQuantidadeUnitaria(_getQuantidadeReal(_quantidadeFormatada))} $unidadeUnit',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Dicas ATUALIZADAS
+                  Text(
+                    'Dicas de entrada (3 casas decimais):\n'
+                    'Para 1g/ml, digite 1. Resultado: 0,001\n'
+                    'Para 12g/ml, digite 12. Resultado: 0,012\n'
+                    'Para 1 Kg/Lt, digite 1000. Resultado: 1,000\n'
+                    'Para 1234567g/ml, digite 1234567. Resultado: 1.234,567',
+                    style: TextStyle(fontSize: 12, color: Colors.black),
+                  ),
+                ],
               ),
-              decoration: const InputDecoration(
-                hintText: 'Digite a quantidade',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Dica:\n'
-              '1 = Kg (ou 1Lt)\n'
-              '0.1 = 100g (ou 100ml)\n'
-              '0.01 = 10g (ou 10ml)',
-              style: TextStyle(fontSize: 12, color: Colors.black),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.red)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            onPressed: () {
-              final qtd = double.tryParse(_quantidadeCtrl.text) ?? 0;
-              if (qtd <= 0) {
-                _removerInsumoPorId(insumo.id!);
-              } else {
-                setState(() {
-                  _insumosSelecionados.removeWhere(
-                    (e) => e.insumo.id == insumo.id,
-                  );
-                  _insumosSelecionados.add(
-                    _InsumoSelecionado(insumo: insumo, quantidade: qtd),
-                  );
-                });
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('Salvar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                  onPressed: () {
+                    // Obtém a quantidade REAL do texto formatado
+                    final qtd = _getQuantidadeReal(_quantidadeCtrl.text);
+
+                    if (qtd <= 0) {
+                      _removerInsumoPorId(insumo.id!);
+                    } else {
+                      setState(() {
+                        _insumosSelecionados.removeWhere(
+                          (e) => e.insumo.id == insumo.id,
+                        );
+                        _insumosSelecionados.add(
+                          _InsumoSelecionado(insumo: insumo, quantidade: qtd),
+                        );
+                      });
+                    }
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text(
+                    'Salvar',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -200,6 +355,7 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                 itemCount: _insumosDisponiveis.length,
                 itemBuilder: (_, index) {
                   final insumo = _insumosDisponiveis[index];
+                  // Esconde insumos já selecionados
                   if (_insumosSelecionados.any(
                     (sel) => sel.insumo.id == insumo.id,
                   ))
@@ -241,7 +397,8 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                       (e) => Chip(
                         backgroundColor: Colors.blue.shade50,
                         label: Text(
-                          '${e.insumo.nome} (${e.quantidade})',
+                          // Garante que a quantidade seja exibida no formato correto (ex: 1.250,000)
+                          '${e.insumo.nome} (${_toFormattedString(e.quantidade)})',
                           style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         deleteIcon: const Icon(Icons.close, color: Colors.red),

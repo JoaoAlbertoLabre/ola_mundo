@@ -5,6 +5,7 @@ import '../db/database_helper.dart';
 import '../models/insumos_model.dart';
 import 'dart:io';
 import '../utils/formato_utils.dart'; // <-- 3. Importe seu arquivo de formatação
+import '../utils/unidades_constantes_utils.dart'; // Importação atualizada
 
 // Cor padrão do sistema
 const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
@@ -72,7 +73,6 @@ class _InsumoScreenState extends State<InsumoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // <-- MUDANÇA AQUI: Cria o formatador para a lista
     final currencyFormatter = NumberFormat.currency(
       locale: 'pt_BR',
       symbol: 'R\$',
@@ -144,7 +144,7 @@ class _InsumoScreenState extends State<InsumoScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: Text(
-                          // <-- MUDANÇA AQUI: Usa o formatador de moeda
+                          // Exibe a Unidade e o Valor Formatado
                           'Un: ${insumo.un ?? "-"} | Valor: ${currencyFormatter.format(insumo.valor ?? 0)}',
                         ),
                         trailing: Row(
@@ -178,7 +178,10 @@ class _InsumoScreenState extends State<InsumoScreen> {
   }
 }
 
-// === Formulário de cadastro/edição de Insumo ===
+// -----------------------------------------------------------------------------
+// === Formulário de cadastro/edição de Insumo (MODIFICADO) ===
+// -----------------------------------------------------------------------------
+
 class InsumoForm extends StatefulWidget {
   final Insumo? item;
   const InsumoForm({Key? key, this.item}) : super(key: key);
@@ -190,10 +193,11 @@ class InsumoForm extends StatefulWidget {
 class _InsumoFormState extends State<InsumoForm> {
   final db = DatabaseHelper.instance;
   final nomeCtrl = TextEditingController();
-  final unCtrl = TextEditingController();
   final valorCtrl = TextEditingController();
 
-  // <-- MUDANÇA AQUI: Formatador para preencher o campo na edição
+  // Variável para armazenar o valor selecionado do Dropdown
+  String? _unSelecionada;
+
   final currencyFormatter = NumberFormat.currency(locale: 'pt_BR', symbol: '');
 
   @override
@@ -201,13 +205,21 @@ class _InsumoFormState extends State<InsumoForm> {
     super.initState();
     if (widget.item != null) {
       nomeCtrl.text = widget.item!.nome;
-      unCtrl.text = widget.item!.un ?? '';
-      // <-- MUDANÇA AQUI: Formata o valor ao carregar
+      // Inicializa o dropdown com a unidade existente
+      _unSelecionada = widget.item!.un;
+
+      // Formata o valor ao carregar
       valorCtrl.text = currencyFormatter.format(widget.item!.valor ?? 0);
     }
   }
 
-  // <-- MUDANÇA AQUI: Função auxiliar para limpar a máscara
+  @override
+  void dispose() {
+    nomeCtrl.dispose();
+    valorCtrl.dispose();
+    super.dispose();
+  }
+
   double? _parseCurrency(String text) {
     if (text.isEmpty) return null;
     final cleanedText = text.replaceAll('.', '').replaceAll(',', '.');
@@ -215,11 +227,35 @@ class _InsumoFormState extends State<InsumoForm> {
   }
 
   Future<void> salvarOuAtualizar() async {
+    // Para validação simples, focamos o foco para garantir que os campos percam o foco e validem.
+    FocusScope.of(context).unfocus();
+
+    // Simples validação de campos
+    if (nomeCtrl.text.isEmpty ||
+        _unSelecionada == null ||
+        _parseCurrency(valorCtrl.text) == null) {
+      // Poderia adicionar um showDialog ou usar um Form com GlobalKey, mas para manter o padrão
+      // do código inicial, faremos a validação implícita no objeto.
+      // Já que não há GlobalKey<FormState>, vamos apenas evitar salvar com dados vazios críticos.
+      if (nomeCtrl.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('O nome do insumo é obrigatório.')),
+        );
+        return;
+      }
+      if (_unSelecionada == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A unidade é obrigatória.')),
+        );
+        return;
+      }
+    }
+
     final item = Insumo(
       id: widget.item?.id,
       nome: nomeCtrl.text,
-      un: unCtrl.text.isEmpty ? null : unCtrl.text,
-      // <-- MUDANÇA AQUI: Usa a função para salvar o valor
+      // Usa o valor do Dropdown
+      un: _unSelecionada,
       valor: _parseCurrency(valorCtrl.text),
     );
 
@@ -230,6 +266,15 @@ class _InsumoFormState extends State<InsumoForm> {
     }
 
     Navigator.pop(context);
+  }
+
+  // Função auxiliar para padronizar o visual dos inputs
+  InputDecoration _inputDecoration(String label, {IconData? icon}) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: icon != null ? Icon(icon, color: primaryColor) : null,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
   }
 
   @override
@@ -254,45 +299,53 @@ class _InsumoFormState extends State<InsumoForm> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
+        child: ListView(
           children: [
             TextField(
               controller: nomeCtrl,
-              decoration: InputDecoration(
-                labelText: 'Nome',
-                prefixIcon: const Icon(Icons.inventory_2, color: primaryColor),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+              decoration: _inputDecoration('Nome', icon: Icons.inventory_2),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: unCtrl,
-              decoration: InputDecoration(
-                labelText: 'Unidade (ex: kg, un, m, l, pç)',
-                prefixIcon: const Icon(Icons.straighten, color: primaryColor),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+
+            // -----------------------------------------------------------------
+            // NOVO: DropdownButtonFormField para Unidade
+            // -----------------------------------------------------------------
+            DropdownButtonFormField<String>(
+              value: _unSelecionada,
+              decoration: _inputDecoration('Unidade', icon: Icons.straighten),
+              hint: const Text("Selecione a Unidade"),
+              isExpanded: true,
+              items: UnidadesConstantes.CODIGOS_UNIDADES_DB.map((
+                String codigo,
+              ) {
+                return DropdownMenuItem<String>(
+                  value: codigo,
+                  child: Text(
+                    // Exibe o código e o nome completo
+                    '${codigo} - ${UnidadesConstantes.UNIDADES[codigo]}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _unSelecionada = newValue;
+                });
+              },
+              validator: (value) =>
+                  value == null || value.isEmpty ? "Selecione a unidade" : null,
             ),
+
+            // -----------------------------------------------------------------
             const SizedBox(height: 12),
             TextField(
               controller: valorCtrl,
-              // <-- MUDANÇA AQUI: Teclado e formatadores de entrada
               keyboardType: TextInputType.number,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
                 RealInputFormatter(),
               ],
-              decoration: InputDecoration(
-                labelText: 'Valor',
-                prefixIcon: const Icon(Icons.attach_money, color: primaryColor),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+              decoration: _inputDecoration('Valor', icon: Icons.attach_money),
             ),
             const SizedBox(height: 20),
             SizedBox(

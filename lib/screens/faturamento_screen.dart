@@ -209,7 +209,7 @@ class _FaturamentoFormState extends State<FaturamentoForm> {
   }
 
   Future<void> selecionarAno() async {
-    final anos = List.generate(50, (i) => DateTime.now().year - i);
+    final anos = List.generate(10, (i) => 2025 + i);
     final escolhido = await showDialog<int>(
       context: context,
       builder: (ctx) => SimpleDialog(

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // <-- 1. Importado
-import 'package:intl/intl.dart'; // <-- 2. Importado
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../db/database_helper.dart';
 import '../models/produtos_model.dart';
 import '../screens/composicao_produto_screen.dart';
-import '../utils/formato_utils.dart'; // <-- 3. Importe seu arquivo
+import '../utils/formato_utils.dart';
+import '../utils/unidades_constantes_utils.dart'; // Importação do arquivo de constantes
 
 class ProdutoScreen extends StatefulWidget {
   const ProdutoScreen({Key? key}) : super(key: key);
@@ -14,7 +15,6 @@ class ProdutoScreen extends StatefulWidget {
 }
 
 class _ProdutoScreenState extends State<ProdutoScreen> {
-  // ... (suas variáveis e initState permanecem iguais)
   List<Produto> produtos = [];
   double totalCustosFixos = 0;
   double faturamento = 0;
@@ -43,7 +43,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
     }
   }
 
-  // ... (abrirCadastroProduto permanece igual)
   Future<void> abrirCadastroProduto() async {
     final db = DatabaseHelper.instance;
 
@@ -95,7 +94,6 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // <-- MUDANÇA AQUI: Formatador para a lista de produtos
     final currencyFormatter = NumberFormat.currency(
       locale: 'pt_BR',
       symbol: 'R\$',
@@ -157,14 +155,13 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
-                        // <-- MUDANÇAS A PARTIR DAQUI: Usando o formatador
                         Text(
                           'Venda: ${currencyFormatter.format(venda)}',
                           style: const TextStyle(fontSize: 16),
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Lucro: ${percLucro.toStringAsFixed(0)}%   ${currencyFormatter.format(lucro)}',
+                          'Lucro: ${percLucro.toStringAsFixed(0)}%   ${currencyFormatter.format(lucro)}',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -178,7 +175,7 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Custo Fixo: ${percCF.toStringAsFixed(0)}%   ${currencyFormatter.format(cf)}',
+                          'Custo Fixo: ${percCF.toStringAsFixed(0)}%   ${currencyFormatter.format(cf)}',
                           style: const TextStyle(
                             fontSize: 13,
                             color: Colors.red,
@@ -186,7 +183,7 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Custo Comercial: ${percCC.toStringAsFixed(0)}%   ${currencyFormatter.format(cc)}',
+                          'Custo Comercial: ${percCC.toStringAsFixed(0)}%   ${currencyFormatter.format(cc)}',
                           style: const TextStyle(
                             fontSize: 13,
                             color: Colors.red,
@@ -254,8 +251,11 @@ class _ProdutoScreenState extends State<ProdutoScreen> {
   }
 }
 
+// -----------------------------------------------------------------------------
+// PRODUTO FORM SCREEN MODIFICADO
+// -----------------------------------------------------------------------------
+
 class ProdutoFormScreen extends StatefulWidget {
-  // ... (construtor permanece o mesmo)
   final Produto? item;
   final double faturamento;
   final double totalCustosFixos;
@@ -277,21 +277,22 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _nomeController;
-  late TextEditingController _unController;
+  // REMOVIDO: late TextEditingController _unController;
+  late String? _unSelecionada; // <-- NOVA VARIÁVEL para o Dropdown
+
   late TextEditingController _custoController;
   late TextEditingController _vendaController;
   String tipoProduto = "Comprado";
 
-  // <-- MUDANÇA AQUI: Formatador para os campos do formulário
   final currencyFormatter = NumberFormat.currency(locale: 'pt_BR', symbol: '');
 
   @override
   void initState() {
     super.initState();
     _nomeController = TextEditingController(text: widget.item?.nome ?? "");
-    _unController = TextEditingController(text: widget.item?.un ?? "");
+    // Inicializa a unidade selecionada com o valor existente no item
+    _unSelecionada = widget.item?.un;
 
-    // <-- MUDANÇA AQUI: Formata os valores ao carregar
     _custoController = TextEditingController(
       text: currencyFormatter.format(widget.item?.custo ?? 0),
     );
@@ -304,17 +305,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     }
   }
 
-  // ... (dispose permanece o mesmo)
   @override
   void dispose() {
     _nomeController.dispose();
-    _unController.dispose();
+    // _unController.dispose(); <-- REMOVIDO
     _custoController.dispose();
     _vendaController.dispose();
     super.dispose();
   }
 
-  // <-- MUDANÇA AQUI: Função para limpar a máscara antes de salvar
   double _parseCurrency(String text) {
     if (text.isEmpty) return 0.0;
     final cleanedText = text.replaceAll('.', '').replaceAll(',', '.');
@@ -324,9 +323,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   Future<void> _salvarProduto() async {
     final db = DatabaseHelper.instance;
     FocusScope.of(context).unfocus();
+    // Valida o formulário, que agora inclui a validação do dropdown
     if (!_formKey.currentState!.validate()) return;
 
-    // <-- MUDANÇA AQUI: Usa a função _parseCurrency
     double custo = tipoProduto == "Comprado"
         ? _parseCurrency(_custoController.text)
         : 0;
@@ -336,7 +335,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     final produto = Produto(
       id: widget.item?.id,
       nome: _nomeController.text,
-      un: _unController.text,
+      un: _unSelecionada, // <-- SALVA O VALOR DO DROPDOWN
       custo: custo,
       venda: 0,
       tipo: tipoProduto,
@@ -364,10 +363,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
     }
 
-    // <-- MUDANÇA AQUI: Usa a função _parseCurrency
     double venda = _parseCurrency(_vendaController.text);
     if (venda == 0 && widget.faturamento > 0) {
-      // Evita divisão por zero
       final indiceCF = widget.totalCustosFixos / widget.faturamento;
       final indiceCC = widget.totalCustoComercial / 100;
       final indiceLucro = ultimoLucro / 100;
@@ -377,13 +374,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     produto.venda = venda;
     await db.atualizarProduto(produto.toMap());
 
-    // <-- MUDANÇA AQUI: Formata o valor calculado antes de exibir
     _vendaController.text = currencyFormatter.format(venda);
 
     if (mounted) Navigator.pop(context, true);
   }
 
-  // ... (_inputDecoration permanece o mesmo)
   InputDecoration _inputDecoration(String label, {String? hint}) {
     return InputDecoration(
       labelText: label,
@@ -412,10 +407,35 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                     value == null || value.isEmpty ? "Informe o nome" : null,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _unController,
-                decoration: _inputDecoration("Unidade (ex: kg, un, m, l, pç)"),
+
+              // <--- CAMPO DROPDOWN DE UNIDADE SUBSTITUINDO O TEXTFORMFIE LD --->
+              DropdownButtonFormField<String>(
+                value: _unSelecionada,
+                decoration: _inputDecoration("Unidade"),
+                hint: const Text("Selecione a Unidade"),
+                isExpanded: true,
+                items: UnidadesConstantes.CODIGOS_UNIDADES_DB.map((
+                  String codigo,
+                ) {
+                  return DropdownMenuItem<String>(
+                    value: codigo,
+                    child: Text(
+                      '${codigo} - ${UnidadesConstantes.UNIDADES[codigo]}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _unSelecionada = newValue;
+                  });
+                },
+                validator: (value) => value == null || value.isEmpty
+                    ? "Selecione a unidade"
+                    : null,
               ),
+
+              // <--- FIM DO DROPDOWN --->
               const SizedBox(height: 16),
               const Text(
                 "Tipo de Produto",
@@ -451,7 +471,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // <-- MUDANÇA AQUI: Campo de Custo com formatador
               TextFormField(
                 controller: _custoController,
                 enabled: tipoProduto == "Comprado",
@@ -474,7 +493,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // <-- MUDANÇA AQUI: Campo de Venda com formatador
               TextFormField(
                 controller: _vendaController,
                 decoration: _inputDecoration(
