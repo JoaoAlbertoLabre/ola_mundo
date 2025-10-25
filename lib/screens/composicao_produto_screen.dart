@@ -174,6 +174,32 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
   }
 
   // -----------------------------------------------------------------------------
+  // FUNÇÃO MODIFICADA: _getUnidadesDisplay
+  // -----------------------------------------------------------------------------
+  String _getUnidadesDisplay(String? un, String formattedText) {
+    final unidade = un?.toUpperCase().trim();
+
+    // Lista de unidades que usam o formato de 3 decimais (Kg, Litro, etc.)
+    const unidades3Decimais = {'KG', 'G', 'L', 'LT', 'ML'};
+
+    final realQuantity = _getQuantidadeReal(formattedText);
+
+    // Se a unidade for de peso ou volume, usamos a formatação de 3 casas
+    if (unidade != null && unidades3Decimais.contains(unidade)) {
+      // Retorna o texto do campo (já formatado) + a unidade
+      return '$formattedText ${unidade}';
+    }
+
+    // Para outras unidades (UN, PÇ, etc.), usamos o valor real com
+    // um número de casas decimais mais comum (2), ou nenhuma se for inteiro
+    if (realQuantity == realQuantity.round()) {
+      return '${realQuantity.round()} ${unidade ?? ''}';
+    }
+
+    return '${realQuantity.toStringAsFixed(2)} ${unidade ?? ''}';
+  }
+
+  // -----------------------------------------------------------------------------
   // FUNÇÃO MODIFICADA: _selecionarInsumo
   // -----------------------------------------------------------------------------
   void _selecionarInsumo(Insumo insumo) {
@@ -186,22 +212,20 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
     _quantidadeFormatada = _toFormattedString(selecionadoExistente.quantidade);
     _quantidadeCtrl.text = _quantidadeFormatada;
 
-    // Determina a unidade de medida para exibição
-    String unidadeBase = 'Kg';
-    String unidadeUnit = 'g';
-    if (insumo.un != null && insumo.un!.toLowerCase().contains('l')) {
-      unidadeBase = 'Lt';
-      unidadeUnit = 'ml';
-    }
-
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           // Usamos StatefulBuilder para atualizar apenas o dialog
           builder: (context, setLocalState) {
+            // AQUI OBTEMOS O VALOR DE EXIBIÇÃO ATUALIZADO
+            final String displayValue = _getUnidadesDisplay(
+              insumo.un,
+              _quantidadeFormatada,
+            );
+
             return AlertDialog(
-              title: Text('Quantidade de ${insumo.nome}'),
+              title: Text('Quantidade de ${insumo.nome} (${insumo.un ?? ''})'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,33 +242,23 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                         _quantidadeFormatada = value;
                       });
                     },
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Digite a quantidade',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      // Adiciona a unidade no sufixo para clareza
+                      suffixText: insumo.un?.toUpperCase() ?? 'UN',
                     ),
                   ),
                   const SizedBox(height: 10),
 
-                  // Exibição simplificada da quantidade em unidades amigáveis (apenas o valor unitário)
+                  // Exibição do valor atual usando a nova lógica
                   Text(
-                    'Valor atual: ${_getQuantidadeUnitaria(_getQuantidadeReal(_quantidadeFormatada))} $unidadeUnit',
+                    'Valor atual: ${displayValue}',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: Colors.blue,
                     ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  // Dicas ATUALIZADAS
-                  Text(
-                    'Dicas de entrada (3 casas decimais):\n'
-                    'Para 1g/ml, digite 1. Resultado: 0,001\n'
-                    'Para 12g/ml, digite 12. Resultado: 0,012\n'
-                    'Para 1 Kg/Lt, digite 1000. Resultado: 1,000\n'
-                    'Para 1234567g/ml, digite 1234567. Resultado: 1.234,567',
-                    style: TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],
               ),
@@ -371,10 +385,12 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                       subtitle: Text(
                         'Valor unitário: R\$ ${insumo.valor?.toStringAsFixed(2) ?? '0.00'}',
                       ),
-                      trailing: const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: Colors.grey,
+                      trailing: Text(
+                        insumo.un ?? 'UN', // Exibe a unidade na lista
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
                       ),
                       onTap: () => _selecionarInsumo(insumo),
                     ),
@@ -397,8 +413,8 @@ class _ComposicaoProdutoScreenState extends State<ComposicaoProdutoScreen> {
                       (e) => Chip(
                         backgroundColor: Colors.blue.shade50,
                         label: Text(
-                          // Garante que a quantidade seja exibida no formato correto (ex: 1.250,000)
-                          '${e.insumo.nome} (${_toFormattedString(e.quantidade)})',
+                          // Garante que a quantidade seja exibida no formato correto (ex: 1.250,000 Kg)
+                          '${e.insumo.nome} (${_getUnidadesDisplay(e.insumo.un, _toFormattedString(e.quantidade))})',
                           style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         deleteIcon: const Icon(Icons.close, color: Colors.red),

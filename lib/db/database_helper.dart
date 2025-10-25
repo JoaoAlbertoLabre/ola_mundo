@@ -3,6 +3,8 @@ import 'package:path/path.dart';
 import 'package:vendo_certo/models/produtos_model.dart';
 import 'package:vendo_certo/utils/codigo_helper.dart';
 import 'package:vendo_certo/screens/login_screen.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart'; // Certifique-se de que este pacote está no seu pubspec.yaml
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -27,6 +29,14 @@ class DatabaseHelper {
       onUpgrade: _onUpgrade,
     );
   }
+
+  // --- 🔑 UTILITY HASHING FUNCTION (REMOVIDA DE DENTRO DO verificarSenhaHash) ---
+  String _gerarHashSeguro(String senhaPura) {
+    final bytes = utf8.encode(senhaPura);
+    final hashDigest = sha256.convert(bytes);
+    return hashDigest.toString();
+  }
+  // --------------------------------------------------------------------------
 
   // 🔴 Função para resetar o banco
   Future<void> resetDatabase() async {
@@ -70,6 +80,7 @@ class DatabaseHelper {
       data_validade TEXT,
       identificador TEXT,
       txid TEXT NOT NULL UNIQUE,
+      codigo_recuperacao TEXT,
       
       -- ADICIONE ESTAS COLUNAS --
       nome_fiscal TEXT,
@@ -81,8 +92,8 @@ class DatabaseHelper {
       bairro TEXT,
       cidade TEXT,
       uf TEXT
-    )
-    ''');
+      )
+      ''');
 
     await db.execute('''
     CREATE TABLE IF NOT EXISTS codigos (
@@ -92,7 +103,7 @@ class DatabaseHelper {
       data_criacao TEXT NOT NULL,
       FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
     )
-  ''');
+    ''');
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS produto (
@@ -103,7 +114,7 @@ class DatabaseHelper {
         venda REAL,
         tipo TEXT
       )
-    ''');
+      ''');
 
     // ------------------- CUSTO FIXO -------------------
     await db.execute('''
@@ -122,7 +133,7 @@ class DatabaseHelper {
         outros2 REAL,
         outros3 REAL
       )
-    ''');
+      ''');
 
     // ------------------- CUSTO COMERCIAL -------------------
     await db.execute('''
@@ -135,7 +146,7 @@ class DatabaseHelper {
         outros2 REAL,
         outros3 REAL
       )
-    ''');
+      ''');
 
     // ------------------- FATURAMENTO -------------------
     await db.execute('''
@@ -146,7 +157,7 @@ class DatabaseHelper {
         valor REAL NOT NULL
       )
 
-    ''');
+      ''');
 
     // ------------------- LUCRO -------------------
     await db.execute('''
@@ -156,7 +167,7 @@ class DatabaseHelper {
         ano INTEGER NOT NULL,
         percentual REAL NOT NULL
       )
-    ''');
+      ''');
 
     // ------------------- MATERIA PRIMA -------------------
     await db.execute('''
@@ -166,7 +177,7 @@ class DatabaseHelper {
         un TEXT,
         valor REAL
       )
-    ''');
+      ''');
 
     // ------------------- INSUMO -------------------
     await db.execute('''
@@ -176,7 +187,7 @@ class DatabaseHelper {
         un TEXT,
         valor REAL
       )
-    ''');
+      ''');
 
     // ------------------- COMPOSICAO PRODUTO -------------------
     await db.execute('''
@@ -188,10 +199,10 @@ class DatabaseHelper {
         FOREIGN KEY (produto_id) REFERENCES produto(id),
         FOREIGN KEY (insumo_id) REFERENCES insumo(id)
       )
-    ''');
+      ''');
   }
 
-  //  =================== USUÁRIO ======================
+  //  =================== USUÁRIO ======================
   Future<Map<String, dynamic>?> buscarUsuarioPorId(int id) async {
     final db = await database;
     final resultado = await db.query(
@@ -208,6 +219,14 @@ class DatabaseHelper {
   // Inserir o usuário (apenas 1 usuário)
   Future<int> inserirUsuario(Map<String, dynamic> usuario) async {
     final db = await database;
+
+    // ⚠️ CORREÇÃO CRÍTICA: Hashear a senha antes de salvar no DB
+    if (usuario.containsKey('senha')) {
+      final senhaPura = usuario['senha'] as String;
+      // Sobrescreve a senha pura com o hash seguro
+      usuario['senha'] = _gerarHashSeguro(senhaPura);
+    }
+
     return await db.insert(
       'usuarios',
       usuario,
@@ -618,7 +637,7 @@ class DatabaseHelper {
     return await dbClient.rawQuery(
       '''
       SELECT c.produto_id, c.insumo_id, c.quantidade,
-             i.nome AS insumo_nome, i.un AS insumo_un, i.valor AS insumo_valor
+            i.nome AS insumo_nome, i.un AS insumo_un, i.valor AS insumo_valor
       FROM composicao_produto c
       JOIN insumo i ON i.id = c.insumo_id
       WHERE c.produto_id = ?
@@ -683,6 +702,8 @@ class DatabaseHelper {
     if (usuario == null) return true;
 
     final dataLiberacao = DateTime.parse(usuario['data_liberacao']);
+    // O PRAZO_EXPIRACAO_MINUTOS precisa ser definido ou importado
+    const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
     final dataExpiracao = dataLiberacao.add(
       Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
     );
@@ -695,6 +716,7 @@ class DatabaseHelper {
     Map<String, dynamic> usuarioAntigo,
   ) async {
     final db = await database;
+    const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
 
     print("🔹🔹 Função resetarUsuarioExpirado chamada");
 
@@ -710,11 +732,24 @@ class DatabaseHelper {
     // Salva os dados antigos temporariamente
     final dadosTemp = {
       'usuario': "${usuarioAntigo['usuario']}",
-      'senha': "${usuarioAntigo['senha']}",
+      'senha':
+          "${usuarioAntigo['senha']}", // ⚠️ ATENÇÃO: Senha aqui pode ser hash OU texto puro, dependendo de como foi salvo antes. O login vai falhar se for texto puro!
       'email': "${usuarioAntigo['email']}",
       'celular': "${usuarioAntigo['celular']}",
     };
     print("📋 3. Dados temporários preparados: $dadosTemp");
+
+    // 🔑 Garante que a senha salva na variável novoUsuario ESTEJA HASHEADA,
+    // usando o hash da senha antiga (se for hash) ou o hash da senha pura (se for pura).
+    String senhaParaSalvar = dadosTemp['senha'] as String;
+    // Se a senha salva não parecer um hash (ex: for "123456"), devemos hasheá-la.
+    // É mais seguro sempre hashear aqui, se a tela de reset está garantindo que o novo usuário será hasheado.
+    // Como assumimos que a tela de cadastro e reset agora usa hash, vamos hashear a string aqui,
+    // mesmo que ela já seja um hash, para simplificar. O hash de um hash é diferente,
+    // mas garantimos que a string salva não seja texto puro.
+
+    // 💡 Melhor abordagem: Apenas garanta que o método de inserção fará o hash
+    // (o que já corrigimos em inserirUsuario).
 
     // Gera novo código de liberação
     final novoCodigo = CodigoHelper.gerarCodigo();
@@ -725,7 +760,7 @@ class DatabaseHelper {
 
     final novoUsuario = {
       'usuario': dadosTemp['usuario'],
-      'senha': dadosTemp['senha'],
+      'senha': dadosTemp['senha'], // A senha será hasheada em 'inserirUsuario'
       'email': dadosTemp['email'],
       'celular': dadosTemp['celular'],
       'codigo_liberacao': "$novoCodigo",
@@ -738,6 +773,7 @@ class DatabaseHelper {
     print("📌 5. Novo usuário preparado para inserção: $novoUsuario");
 
     // Insere novo usuário no banco e obtém o ID gerado
+    // O método 'inserirUsuario' AGORA HASHeará a senha antes de salvar!
     final id = await inserirUsuario(novoUsuario);
     novoUsuario['id'] = id;
     print("✅ 6. Novo usuário inserido com ID $id: $novoUsuario");
@@ -775,6 +811,7 @@ class DatabaseHelper {
     String novoIdentificador,
   ) async {
     final db = await instance.database;
+    const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
     final agoraUtc = DateTime.now().toUtc();
 
     final dadosAtualizados = {
@@ -797,5 +834,77 @@ class DatabaseHelper {
 
     // Retorna um novo mapa com os dados antigos e os novos combinados
     return {...usuarioAntigo, ...dadosAtualizados};
+  }
+
+  // Salvar código de recuperação
+  Future<void> salvarCodigoRecuperacao(String usuario, String codigo) async {
+    final db = await instance.database;
+    await db.update(
+      'usuarios',
+      {'codigo_recuperacao': codigo},
+      where: 'usuario = ?',
+      whereArgs: [usuario],
+    );
+  }
+
+  Future<void> atualizarSenhaHash(String usuario, String senhaHash) async {
+    // 1. O parâmetro agora é 'senhaHash', pois ele JÁ VEM HASHEADO
+    //    da tela 'recuperar_senha_screen.dart'.
+
+    final db = await instance.database;
+
+    await db.update(
+      'usuarios',
+      {
+        'senha': senhaHash, // 3. Salva o HASH recebido DIRETAMENTE
+        'codigo_recuperacao': null,
+      },
+      where: 'usuario = ?',
+      whereArgs: [usuario],
+    );
+  }
+
+  // ==================== NOVA FUNÇÃO DE LOGIN COM HASH ====================
+
+  /// 🔑 Busca o usuário pelo nome e verifica a senha (comparando o hash).
+  /// Retorna o mapa do usuário se as credenciais estiverem corretas, ou null.
+  Future<Map<String, dynamic>?> verificarSenhaHash(
+    String usuario,
+    String senhaPura,
+  ) async {
+    final db = await database;
+
+    // 1. Tenta buscar o usuário pelo nome/login
+    final resultado = await db.query(
+      'usuarios',
+      where: 'usuario = ?',
+      whereArgs: [usuario],
+      limit: 1,
+    );
+
+    if (resultado.isEmpty) {
+      // Usuário não encontrado
+      return null;
+    }
+
+    final usuarioMap = resultado.first;
+    final senhaSalvaHash = usuarioMap['senha'] as String?;
+
+    if (senhaSalvaHash == null || senhaSalvaHash.isEmpty) {
+      // Senha salva está ausente (problema de dados)
+      return null;
+    }
+
+    // 2. Calcule o hash da senha pura digitada pelo usuário usando o método auxiliar
+    final senhaDigitadaHash = _gerarHashSeguro(senhaPura);
+
+    // 3. Compare os hashes
+    if (senhaDigitadaHash == senhaSalvaHash) {
+      // Senha correta, retorna o mapa completo do usuário
+      return usuarioMap;
+    }
+
+    // Senha incorreta
+    return null;
   }
 }

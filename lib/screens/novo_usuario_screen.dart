@@ -8,6 +8,7 @@ import 'confirmacao_screen.dart';
 import '../utils/codigo_helper.dart';
 import '../utils/api_service.dart';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
 const Color secondaryColor = Color(0xFF03A9F4);
@@ -352,13 +353,11 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
       if (!mounted) return;
 
       if (resultadoApi['success'] == true) {
-        final identificadorDoServidor =
-            resultadoApi['identificador'] ??
+        final identificadorDoServidor = resultadoApi['identificador'] ??
             (resultadoApi['data'] != null
                 ? resultadoApi['data']['identificador']
                 : null);
-        final txidDoServidor =
-            resultadoApi['txid'] ??
+        final txidDoServidor = resultadoApi['txid'] ??
             (resultadoApi['data'] != null
                 ? resultadoApi['data']['txid']
                 : null);
@@ -372,6 +371,8 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
           print("Identificador ausente no resultadoApi -> $resultadoApi");
           return;
         }
+        final senhaLimpa = _senhaController.text.trim();
+        final senhaHash = sha256.convert(utf8.encode(senhaLimpa)).toString();
 
         final agoraUtc = DateTime.now().toUtc();
         final novoUsuarioMap = {

@@ -1,9 +1,6 @@
-// lib/utils/api_service.dart
-// Versão corrigida com a URL da API padronizada e novos campos fiscais no registrarCliente.
-// CORREÇÃO: Mapeamento correto das chaves 'nomeFiscal' e 'nomeUsuario' para o backend.
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'dart:async'; // Necessário para o TimeoutException
 
 class ApiService {
   static final String _baseUrl = 'https://vendocerto-app.onrender.com';
@@ -21,8 +18,8 @@ class ApiService {
     required String numero,
     required String complemento,
     required String bairro,
-    required String cidade, // Corrigido para ser 'cidade'
-    required String uf, // Corrigido para ser 'uf'
+    required String cidade, // Mantém 'cidade' como nome do parâmetro
+    required String uf, // Mantém 'uf' como nome do parâmetro
   }) async {
     try {
       final response = await http
@@ -30,21 +27,19 @@ class ApiService {
             Uri.parse('$_baseUrl/api/registrar-cliente'),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({
-              // CORREÇÃO: Chaves devem ser 'nomeFiscal' e 'nomeUsuario'
-              'nomeFiscal': nomeFiscal, // Chave correta para NFSe
-              'nomeUsuario':
-                  nomeUsuario, // Chave correta para o nome de contato
+              // Mapeamento de chaves para o backend (Corrigido na rodada anterior)
+              'nome': nomeFiscal,
+              'nomeUsuario': nomeUsuario,
               'email': email,
               'celular': celular,
-
               'cpfCnpj': cpfCnpj,
               'cep': cep,
               'logradouro': logradouro,
               'numero': numero,
               'complemento': complemento,
               'bairro': bairro,
-              'cidade': cidade,
-              'uf': uf,
+              'municipio': cidade, // Mapeado de 'cidade'
+              'estado': uf, // Mapeado de 'uf'
             }),
           )
           .timeout(const Duration(seconds: 60));
@@ -57,13 +52,10 @@ class ApiService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // 🚨 CORREÇÃO PRINCIPAL:
-        // 1. Acede à chave 'data' primeiro (onde o backend aninhou o identificador).
-        final data = responseBody['data'] as Map<String, dynamic>?;
-
-        // 2. Acede à chave 'identificador' (minúsculo) dentro do mapa 'data'.
-        final identificador = data?['identificador'] as String?;
-        final txid = data?['txid'] as String?;
+        // Acessamos 'identificador' e 'txid' diretamente da raiz do objeto JSON,
+        final identificador = responseBody['identificador'] as String?;
+        final txid =
+            responseBody['txid_sugerido'] as String?; // Usando txid_sugerido
 
         if (identificador == null || identificador.isEmpty) {
           return {
@@ -73,7 +65,7 @@ class ApiService {
           };
         }
 
-        // 🚨 NOVO DEBUG: Imprime o identificador extraído com sucesso
+        // NOVO DEBUG: Imprime o identificador extraído com sucesso
         print(
           'SUCESSO API: Identificador retornado e extraído: $identificador',
         );
@@ -84,12 +76,18 @@ class ApiService {
         // Se houver qualquer erro (400, 500, etc.), o erro será exibido
         return {
           'success': false,
-          'message':
-              responseBody['erro'] ??
+          'message': responseBody['erro'] ??
               responseBody['message'] ??
               'Falha ao registrar cliente.',
         };
       }
+      // 🚨 NOVO TRATAMENTO: Captura o TimeoutException especificamente
+    } on TimeoutException {
+      return {
+        'success': false,
+        'message':
+            'O servidor demorou muito para responder. Tente novamente mais tarde.',
+      };
     } catch (e) {
       return {
         'success': false,
@@ -128,6 +126,9 @@ class ApiService {
               responseBody['message'] ?? 'Pagamento ainda não confirmado',
         };
       }
+    } on TimeoutException {
+      // Adicionando tratamento de Timeout
+      return {'success': false, 'message': 'Tempo limite de conexão excedido.'};
     } catch (e) {
       return {'success': false, 'message': 'Erro de conexão: ${e.toString()}'};
     }
@@ -159,6 +160,9 @@ class ApiService {
                 responseBody['erro'] ?? 'Ocorreu um erro. Tente novamente.',
           };
       }
+    } on TimeoutException {
+      // Adicionando tratamento de Timeout
+      return {'success': false, 'message': 'Tempo limite de conexão excedido.'};
     } catch (e) {
       return {
         'success': false,
@@ -168,33 +172,113 @@ class ApiService {
   }
 
   /// Pede ao backend para criar a cobrança PIX e retorna os dados do QR Code.
+  // Substitua a sua função criarCobranca por esta:
+
+  /// Pede ao backend para criar a cobrança PIX e retorna os dados do QR Code.
   static Future<Map<String, dynamic>> criarCobranca(
-    String identificador,
+    String
+        txid, // <-- MUDANÇA 1: Agora recebemos o 'txid' em vez do 'identificador'
   ) async {
+    // Validação simples para evitar enviar um txid nulo ou vazio
+    if (txid.isEmpty) {
+      return {
+        'success': false,
+        'message':
+            'Erro interno: TXID inválido fornecido para criar a cobrança.'
+      };
+    }
+
     try {
       final response = await http
           .post(
-            // CORREÇÃO: Padroniza a URL para usar o prefixo /api/
             Uri.parse('$_baseUrl/api/criar-cobranca'),
             headers: {'Content-Type': 'application/json'},
-            body: json.encode({'identificador': identificador}),
+            // <-- MUDANÇA 2: Enviamos o txid com a chave que o backend espera ('txid_sugerido')
+            body: json.encode({'txid_sugerido': txid}),
           )
           .timeout(const Duration(seconds: 20));
 
-      final responseBody = json.decode(response.body);
+      print(
+          'Resposta RAW do Servidor para criarCobranca (Status ${response.statusCode}): ${response.body}');
+
+      if (response.statusCode == 404) {
+        return {
+          'success': false,
+          'message':
+              'ERRO DE ROTA (404): O servidor não encontrou a rota /api/criar-cobranca. Verifique a configuração de rotas no backend (Python/Flask).',
+        };
+      }
+
+      Map<String, dynamic> responseBody;
+      try {
+        responseBody = json.decode(response.body);
+      } catch (e) {
+        print(
+            'ERRO: Falha ao decodificar JSON em criarCobranca. Body recebido: ${response.body}. Erro: $e');
+        return {
+          'success': false,
+          'message':
+              'Erro ao processar a resposta do servidor. O servidor não retornou um formato JSON válido.'
+        };
+      }
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'data': responseBody};
       } else {
         return {
           'success': false,
-          'message':
-              responseBody['detalhes']?['violacoes']?[0]?['razao'] ??
+          'message': responseBody['detalhes']?['violacoes']?[0]?['razao'] ??
               responseBody['erro'] ??
-              'Falha ao gerar QR Code.',
+              'Falha ao gerar QR Code. (Status: ${response.statusCode})',
         };
       }
+    } on TimeoutException {
+      return {'success': false, 'message': 'Tempo limite de conexão excedido.'};
     } catch (e) {
-      return {'success': false, 'message': 'Erro de conexão ao gerar QR Code.'};
+      return {
+        'success': false,
+        'message': 'Erro de conexão ao gerar QR Code: ${e.toString()}'
+      };
+    }
+  }
+
+  /// Envia o código de recuperação do usuário para o backend (Render)
+  static Future<Map<String, dynamic>> enviarCodigoRecuperacao({
+    required String usuario,
+    required String codigo,
+  }) async {
+    final url = Uri.parse(
+        '$_baseUrl/api/atualizar-codigo-recuperacao'); // Crie esta rota no backend
+    try {
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
+            body:
+                jsonEncode({'usuario': usuario, 'codigo_recuperacao': codigo}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final responseBody = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': responseBody['sucesso'] ?? 'Código enviado com sucesso!',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseBody['erro'] ?? 'Falha ao enviar código.',
+        };
+      }
+    } on TimeoutException {
+      return {'success': false, 'message': 'Tempo limite de conexão excedido.'};
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Não foi possível conectar ao servidor. Erro: $e',
+      };
     }
   }
 }

@@ -1,11 +1,10 @@
-// lib/screens/login_screen.dart
-
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import 'cadastro_screen.dart';
 import 'novo_usuario_screen.dart';
 import 'confirmacao_screen.dart';
 import 'dart:async';
+import 'recuperar_senha_screen.dart';
 
 // Credenciais fixas para o avaliador do Google Play.
 // Atenção: Use um nome de arquivo diferente para o build de produção se não quiser que essas credenciais existam.
@@ -34,13 +33,19 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _verificarUsuariosExistentes();
+    // A verificação periódica não precisa ser executada na tela de login,
+    // apenas quando o usuário está autenticado e usando o app.
+    // Manter por enquanto, mas pode ser movida para a tela principal (CadastroScreen)
+    // para evitar chamadas de timer desnecessárias na inicialização.
     _iniciarVerificacaoLicencaPeriodica();
   }
 
+  // Lógica de verificação periódica da licença
   void _iniciarVerificacaoLicencaPeriodica() {
     Timer.periodic(const Duration(minutes: 30), (_) async {
       if (!mounted) return;
       final routeAtual = ModalRoute.of(context);
+      // Evita correr a verificação se já estiver na tela de confirmação (que resolve pendências).
       if (routeAtual?.settings.name == 'ConfirmacaoScreen') {
         return;
       }
@@ -48,12 +53,15 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  // Verifica se há usuários não confirmados ou com licença expirada logo na abertura do app
   Future<void> _verificarUsuariosExistentes() async {
     final db = DatabaseHelper.instance;
     final usuarioNaoConfirmado = await db.buscarUltimoUsuarioNaoConfirmado();
 
+    // 1. Usuário não confirmado encontrado
     if (usuarioNaoConfirmado != null) {
       if (!mounted) return;
+      // Redireciona para confirmação de cadastro
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -63,16 +71,19 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // 2. Verifica se a licença do último usuário expirou
     await _verificarELimparUsuarioSeLicencaExpirada();
 
     // Verificação para garantir que o estado só é atualizado se a tela ainda estiver "montada"
     if (mounted) {
       setState(() {
+        // Assume que deve exibir o botão de novo cadastro se não houver um usuário ativo
         _exibirNovoUsuario = true;
       });
     }
   }
 
+  // Limpa o usuário se a licença estiver expirada e redireciona para a tela de cadastro
   Future<void> _verificarELimparUsuarioSeLicencaExpirada() async {
     final db = DatabaseHelper.instance;
     final usuario = await db.buscarUltimoUsuario();
@@ -81,6 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final expirada = await db.isLicencaExpirada(usuario);
       if (expirada) {
         if (!mounted) return;
+        // Se expirou, redireciona para CadastroScreen com aviso
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -97,18 +109,18 @@ class _LoginScreenState extends State<LoginScreen> {
     final senha = _passwordController.text.trim();
 
     if (nomeDigitado.isEmpty || senha.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Preencha todos os campos")));
       return;
     }
 
-    // LÓGICA DE ACESSO PARA O AVALIADOR DO GOOGLE PLAY
+    // LÓGICA DE ACESSO PARA O AVALIADOR DO GOOGLE PLAY (Mantida)
     if (nomeDigitado == GOOGLE_REVIEWER_ID &&
         senha == GOOGLE_REVIEWER_PASSWORD) {
       if (!mounted) return;
       // Redireciona diretamente para a tela principal (CadastroScreen)
-      // ignorando todas as verificações de confirmação e licença.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const CadastroScreen()),
@@ -116,42 +128,54 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final usuario = await db.buscarUsuarioPorNome(nomeDigitado);
-    if (usuario == null) {
+    // 🛑 ATUALIZAÇÃO DE SEGURANÇA: Usa uma função de autenticação com hash.
+    // O método verificarSenhaHash deve:
+    // 1. Buscar o usuário pelo nome.
+    // 2. Comparar o hash da senha armazenada com a senha digitada (texto simples).
+    // 3. Retornar o mapa do usuário SOMENTE se a senha for válida.
+    final usuarioAutenticado = await db.verificarSenhaHash(nomeDigitado, senha);
+
+    if (usuarioAutenticado == null) {
+      if (!mounted) return;
+      // Mensagem genérica por segurança: não revela se o erro é no nome de usuário ou na senha.
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text("Usuário não encontrado")));
+      ).showSnackBar(
+          const SnackBar(content: Text("Usuário ou senha inválidos")));
       return;
     }
 
-    if (usuario['senha'] != senha) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Senha incorreta")));
-      return;
-    }
+    // Usa o usuário validado
+    final usuario = usuarioAutenticado;
 
+    // Verifica se o usuário foi confirmado
     if (usuario['confirmado'] != 1) {
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
+          // Força a confirmação do cadastro
           builder: (_) => ConfirmacaoScreen(usuario: usuario, renovacao: false),
         ),
       );
       return;
     }
 
+    // Verifica a licença
     final expirada = await db.isLicencaExpirada(usuario);
     if (expirada) {
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
+          // Se expirada, redireciona para a tela de renovação (CadastroScreen)
           builder: (_) => const CadastroScreen(licencaExpirada: true),
         ),
       );
       return;
     }
 
+    // Login bem-sucedido
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -163,12 +187,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final db = DatabaseHelper.instance;
     final ultimoUsuario = await db.buscarUltimoUsuario();
 
+    // Se houver um usuário ativo e a licença NÃO estiver expirada
     if (ultimoUsuario != null) {
       final expirada = await db.isLicencaExpirada(ultimoUsuario);
       if (!expirada) {
+        if (!mounted) return;
         showDialog(
           context: context,
           builder: (_) {
+            // Formata a data de validade para exibição
             final dataValidade = DateTime.parse(
               ultimoUsuario['data_validade'],
             ).toLocal();
@@ -192,6 +219,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
 
+    // Se não houver usuário ativo ou a licença estiver expirada, permite novo cadastro
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const NovoUsuarioScreen()),
@@ -208,6 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Ícone e Logo
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -238,6 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 40),
+              // Campo de Nome de usuário
               TextField(
                 controller: _idController,
                 decoration: InputDecoration(
@@ -252,6 +283,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+              // Campo de Senha
               TextField(
                 controller: _passwordController,
                 obscureText: !_senhaVisivel,
@@ -277,6 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 30),
+              // Botão Entrar
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -291,6 +324,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 15),
+              // Botão Cadastro
               if (_exibirNovoUsuario)
                 TextButton(
                   onPressed: _novoUsuario,
@@ -299,6 +333,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(fontSize: 16, color: Colors.blue),
                   ),
                 ),
+              // Botão Esqueceu a Senha
+              Align(
+                alignment: Alignment.bottomRight,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RecuperarSenhaScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    "Esqueceu a senha?",
+                    style: TextStyle(fontSize: 14, color: Colors.blueAccent),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

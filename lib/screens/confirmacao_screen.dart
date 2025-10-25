@@ -73,8 +73,14 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     if (!mounted) return;
 
     if (resultado['success']) {
-      final String qrCodeData = resultado['data']['qrCode'];
-      // Você pode querer salvar o QR Code Data no DB local aqui, se necessário.
+      final String? qrCodeData = resultado['data']['qrcode_payload'] ??
+          resultado['data']['qrcode_url'];
+      if (qrCodeData == null || qrCodeData.isEmpty) {
+        _mostrarSnackBar("O servidor não retornou dados válidos do QR Code.",
+            isError: true);
+        setState(() => _isGerandoQrCode = false);
+        return;
+      }
 
       Navigator.push(
         context,
@@ -212,6 +218,7 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
           const SizedBox(height: 8),
           const Text("Para fazer o PIX basta gerar o QR Code"),
           const Text("Favorecido: JEA Software Company"),
+          const Text("O código de liberação será encaminhado por e-mail."),
           const SizedBox(height: 8),
           Text(
             "Identificador TXID: ${txid ?? 'N/D'}",

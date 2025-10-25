@@ -12,6 +12,8 @@ class UnidadesConstantes {
     'UN': 'Unidade (Peça/Saca)',
     'PCT': 'Pacote',
     'CX': 'Caixa',
+    'M': 'Metro',
+    'RL': 'Rolo',
   };
 
   /// Retorna a lista de códigos padronizados (ex: 'KG', 'UN') para usar no Dropdown.

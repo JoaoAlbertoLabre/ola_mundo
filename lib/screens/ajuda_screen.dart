@@ -30,7 +30,7 @@ class AjudaScreen extends StatelessWidget {
       "conteudo":
           "COMPOSIÇÃO DO PRODUTO:\n\n"
           "1 – **Selecionar Insumo** → Escolha o insumo que será usado na produção do produto e clique nele.\n\n"
-          "2 – **Quantidade** → Informe a quantidade do insumo usado. Ex: Produto Bolo usa 0.10 kg de farinha, equivalente a 100g. ⚠️ Lembre-se de usar sempre o ponto '.' para separar casas decimais, e não a vírgula.\n\n"
+          "2 – **Quantidade** → Informe a quantidade do insumo usado.\n\n"
           "3 – **Novo Insumo** → Caso o insumo ainda não esteja cadastrado, clique no botão **'+ Novo'** que fica na parte superior direita da tela.\n\n"
           "4 – **Salvar** → Após selecionar todos os insumos que compõem o produto, clique em **Salvar** para gravar a composição.",
     },
@@ -83,7 +83,7 @@ class AjudaScreen extends StatelessWidget {
       "conteudo":
           "E-MAIL DE SUPORTE:\n\n"
           "suporte@vendocerto.com.br\n\n"
-          "Pode pedir a exlusão dos seus dados por esse email e sua conta não poderá ser renovada.\n\n"
+          "Pode pedir a exclusão dos seus dados por esse email e sua conta não poderá ser renovada.\n\n"
           "Lembre-se seus dados são necessários para a emissão das nfs-e.\n\n",
     },
   ];

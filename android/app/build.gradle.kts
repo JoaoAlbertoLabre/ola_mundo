@@ -50,7 +50,7 @@ android {
         targetSdk = 35 
         
         // CORREÇÃO CRÍTICA: INCREMENTADO PARA 2 para resolver o erro "código de versão 1 já foi usado"
-        versionCode = 4 
+        versionCode = 6 
         versionName = "1.0.0"
     }
 
