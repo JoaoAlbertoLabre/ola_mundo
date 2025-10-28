@@ -55,45 +55,83 @@ class _ConfirmacaoScreenState extends State<ConfirmacaoScreen> {
     if (_isGerandoQrCode) return;
     setState(() => _isGerandoQrCode = true);
 
-    final txidParaCobranca =
-        usuarioAtual['txid'] ?? usuarioAtual['identificador'];
+    try {
+      final usuarioDoDB = await db.buscarUsuarioPorId(usuarioAtual['id']);
+      if (usuarioDoDB == null) {
+        _mostrarSnackBar(
+          "Usuário não encontrado no banco.",
+          isError: true,
+        );
+        return;
+      }
+      usuarioAtual = usuarioDoDB;
 
-    if (txidParaCobranca == null || txidParaCobranca.toString().isEmpty) {
-      //if (txidParaCobranca == null) {
-      _mostrarSnackBar(
-        "Identificador (TXID) do usuário não encontrado. Certifique-se de que o registro foi concluído.",
-        isError: true,
-      );
-      setState(() => _isGerandoQrCode = false);
-      return;
-    }
-
-    // Passamos o TXID longo, que o Flask agora espera na rota de cobrança
-    final resultado = await ApiService.criarCobranca(txidParaCobranca);
-    if (!mounted) return;
-
-    if (resultado['success']) {
-      final String? qrCodeData = resultado['data']['qrcode_payload'] ??
-          resultado['data']['qrcode_url'];
-      if (qrCodeData == null || qrCodeData.isEmpty) {
-        _mostrarSnackBar("O servidor não retornou dados válidos do QR Code.",
-            isError: true);
-        setState(() => _isGerandoQrCode = false);
+      // Se o QR já foi gerado antes, reusa o mesmo
+      if (usuarioAtual['qr_code_data'] != null &&
+          usuarioAtual['qr_code_data'].toString().isNotEmpty) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                PixQRCodeScreen(qrCode: usuarioAtual['qr_code_data']),
+          ),
+        );
         return;
       }
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => PixQRCodeScreen(qrCode: qrCodeData)),
-      );
-    } else {
-      _mostrarSnackBar(
-        resultado['message'] ?? "Não foi possível gerar o QR Code.",
-        isError: true,
-      );
-    }
+      // Pega o TXID para gerar a cobrança
+      final txidParaCobranca =
+          usuarioAtual['txid'] ?? usuarioAtual['identificador'];
 
-    setState(() => _isGerandoQrCode = false);
+      if (txidParaCobranca == null || txidParaCobranca.toString().isEmpty) {
+        _mostrarSnackBar(
+          "Identificador (TXID) do usuário não encontrado. Certifique-se de que o registro foi concluído.",
+          isError: true,
+        );
+        return;
+      }
+
+      // Chama a API para criar a cobrança (apenas se não houver QR code)
+      final resultado = await ApiService.criarCobranca(txidParaCobranca);
+      if (!mounted) return;
+
+      if (resultado['success']) {
+        final String? qrCodeData = resultado['data']['qrcode_payload'] ??
+            resultado['data']['qrcode_url'];
+
+        if (qrCodeData == null || qrCodeData.isEmpty) {
+          _mostrarSnackBar(
+            "O servidor não retornou dados válidos do QR Code.",
+            isError: true,
+          );
+          return;
+        }
+
+        // Salva o QR code no banco
+        await db.atualizarUsuario({
+          'id': usuarioAtual['id'],
+          'qr_code_data': qrCodeData,
+        });
+
+        // Cria uma cópia mutável para uso local se necessário
+        final usuarioMutavel = Map<String, dynamic>.from(usuarioAtual);
+        usuarioMutavel['qr_code_data'] = qrCodeData;
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PixQRCodeScreen(qrCode: qrCodeData),
+          ),
+        );
+      } else {
+        _mostrarSnackBar(
+          resultado['message'] ?? "Não foi possível gerar o QR Code.",
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGerandoQrCode = false);
+    }
   }
 
   Future<void> _confirmarCodigoAPI() async {

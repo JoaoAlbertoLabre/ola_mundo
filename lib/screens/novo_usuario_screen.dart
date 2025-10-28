@@ -118,21 +118,34 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
     if (_isCepLoading) return;
     setState(() => _isCepLoading = true);
     try {
-      final url = Uri.parse('https://brasilapi.com.br/api/cep/v1/$cep');
+      final url = Uri.parse('https://viacep.com.br/ws/$cep/json/');
       final response = await http.get(url).timeout(const Duration(seconds: 10));
       if (!mounted) return;
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _preencherCamposEndereco(data);
+        // Verifica se a API retornou erro (CEP não existe)
+        if (data.containsKey('erro') && data['erro'] == true) {
+          _limparCamposEndereco(manterCep: true); // Mantém o CEP digitado
+          _showFeedbackSnackbar(
+              'CEP não encontrado. Preencha o endereço manualmente.',
+              isError: true);
+        } else {
+          _preencherCamposEndereco(data); // Preenche e mantém editável
+        }
       } else {
-        _limparCamposEndereco();
-        _showFeedbackSnackbar('CEP não encontrado.', isError: true);
+        // Erro na requisição (servidor fora, etc.)
+        _limparCamposEndereco(manterCep: true); // Mantém o CEP digitado
+        _showFeedbackSnackbar(
+            'Falha ao buscar CEP (${response.statusCode}). Preencha manualmente.',
+            isError: true);
       }
     } catch (e) {
+      // Erro de conexão, timeout, etc.
       if (!mounted) return;
-      _limparCamposEndereco();
+      print('ERRO DE CONEXÃO CEP: $e'); // Adicionado para depuração
+      _limparCamposEndereco(manterCep: true); // Mantém o CEP digitado
       _showFeedbackSnackbar(
-        'Erro ao buscar CEP. Verifique a conexão.',
+        'Erro ao buscar CEP. Verifique a conexão e preencha manualmente.',
         isError: true,
       );
     } finally {
@@ -142,17 +155,20 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
 
   void _preencherCamposEndereco(Map<String, dynamic> data) {
     setState(() {
-      _logradouroController.text = (data['street'] ?? '') as String;
-      _bairroController.text = (data['neighborhood'] ?? '') as String;
-      _cidadeController.text = (data['city'] ?? '') as String;
-      _ufController.text = (data['state'] ?? '') as String;
-      _cepPreenchido = true;
+      // Correção: Usar as chaves corretas da API ViaCEP
+      _logradouroController.text = (data['logradouro'] ?? '') as String;
+      _bairroController.text = (data['bairro'] ?? '') as String;
+      _cidadeController.text =
+          (data['localidade'] ?? '') as String; // ViaCEP usa 'localidade'
+      _ufController.text = (data['uf'] ?? '') as String;
+      // Removido: _cepPreenchido = true; (não bloqueia mais)
     });
-    // foca no número
+    // foca no número após preenchimento automático
     FocusScope.of(context).requestFocus(FocusNode());
   }
 
   void _limparCamposEndereco({bool manterCep = false}) {
+    // Só limpa o CEP se explicitamente pedido (manterCep == false)
     if (!manterCep) _cepController.clear();
     setState(() {
       _logradouroController.clear();
@@ -161,11 +177,13 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
       _bairroController.clear();
       _cidadeController.clear();
       _ufController.clear();
-      _cepPreenchido = false;
+      // Removido: _cepPreenchido = false; (não afeta mais a edição)
     });
   }
 
   void _showFeedbackSnackbar(String message, {bool isError = false}) {
+    // Garante que o BuildContext ainda é válido
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),

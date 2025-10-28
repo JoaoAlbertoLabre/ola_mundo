@@ -81,6 +81,7 @@ class DatabaseHelper {
       identificador TEXT,
       txid TEXT NOT NULL UNIQUE,
       codigo_recuperacao TEXT,
+      qr_code_data TEXT,
       
       -- ADICIONE ESTAS COLUNAS --
       nome_fiscal TEXT,

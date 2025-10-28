@@ -92,13 +92,22 @@ class _LoginScreenState extends State<LoginScreen> {
       final expirada = await db.isLicencaExpirada(usuario);
       if (expirada) {
         if (!mounted) return;
-        // Se expirou, redireciona para CadastroScreen com aviso
+
+        // Limpa o QR code antigo
+        await db.atualizarUsuario({
+          'id': usuario['id'],
+          'qr_code_data': null,
+        });
+
+        // Redireciona para CadastroScreen com aviso
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => const CadastroScreen(licencaExpirada: true),
           ),
         );
+
+        return; // garante que não continue executando o restante da função
       }
     }
   }
