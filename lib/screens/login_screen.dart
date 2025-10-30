@@ -93,6 +93,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (expirada) {
         if (!mounted) return;
 
+        // Atualiza status no servidor
+        await ApiService.atualizarStatusCliente(
+          identificador: usuario['identificador'].toString(),
+          novoStatus: 'AGUARDANDO_PAGAMENTO',
+        );
+
         // Limpa o QR code antigo
         await db.atualizarUsuario({
           'id': usuario['id'],
@@ -279,6 +285,8 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 40),
               // Campo de Nome de usuário
               TextField(
+                key: const Key(
+                    'login_username'), // ← ID do recurso para Play Console
                 controller: _idController,
                 decoration: InputDecoration(
                   labelText: "Nome de usuário",
@@ -294,6 +302,8 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 20),
               // Campo de Senha
               TextField(
+                key: const Key(
+                    'login_password'), // ← ID do recurso para Play Console
                 controller: _passwordController,
                 obscureText: !_senhaVisivel,
                 decoration: InputDecoration(

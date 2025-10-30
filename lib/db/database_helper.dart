@@ -717,7 +717,7 @@ class DatabaseHelper {
     Map<String, dynamic> usuarioAntigo,
   ) async {
     final db = await database;
-    const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
+    //const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
 
     print("🔹🔹 Função resetarUsuarioExpirado chamada");
 

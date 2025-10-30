@@ -281,4 +281,51 @@ class ApiService {
       };
     }
   }
+
+  /// Atualiza o status do cliente no servidor (ex: CONCLUIDA → AGUARDANDO_PAGAMENTO)
+  static Future<Map<String, dynamic>> atualizarStatusCliente({
+    required String identificador,
+    required String novoStatus,
+  }) async {
+    final url = Uri.parse('$_baseUrl/api/atualizar-status');
+    try {
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode({
+              'identificador': identificador,
+              'status': novoStatus,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final responseBody = jsonDecode(response.body);
+      print(
+          'Resposta do servidor ao atualizar status (Status ${response.statusCode}): $responseBody');
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message':
+              responseBody['mensagem'] ?? 'Status atualizado com sucesso!',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseBody['erro'] ?? 'Falha ao atualizar status.',
+        };
+      }
+    } on TimeoutException {
+      return {
+        'success': false,
+        'message': 'Tempo limite de conexão excedido ao atualizar status.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erro ao conectar ao servidor: ${e.toString()}',
+      };
+    }
+  }
 }
