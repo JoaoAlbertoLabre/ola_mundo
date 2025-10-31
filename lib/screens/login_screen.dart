@@ -5,6 +5,7 @@ import 'novo_usuario_screen.dart';
 import 'confirmacao_screen.dart';
 import 'dart:async';
 import 'recuperar_senha_screen.dart';
+import '../utils/api_service.dart';
 
 // Credenciais fixas para o avaliador do Google Play.
 // Atenção: Use um nome de arquivo diferente para o build de produção se não quiser que essas credenciais existam.
@@ -42,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Lógica de verificação periódica da licença
   void _iniciarVerificacaoLicencaPeriodica() {
-    Timer.periodic(const Duration(minutes: 30), (_) async {
+    Timer.periodic(const Duration(minutes: 20), (_) async {
       if (!mounted) return;
       final routeAtual = ModalRoute.of(context);
       // Evita correr a verificação se já estiver na tela de confirmação (que resolve pendências).

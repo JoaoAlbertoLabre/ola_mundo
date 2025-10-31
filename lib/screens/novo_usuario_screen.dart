@@ -9,13 +9,14 @@ import '../utils/codigo_helper.dart';
 import '../utils/api_service.dart';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import '../screens/login_screen.dart';
 
 const Color primaryColor = Color(0xFF81D4FA);
 const Color secondaryColor = Color(0xFF03A9F4);
 
 const String MASK_CPF = '###.###.###-##';
 const String MASK_CNPJ = '##.###.###/####-##';
-const int PRAZO_EXPIRACAO_MINUTOS = 15;
+//const int PRAZO_EXPIRACAO_MINUTOS = 15;
 
 class NovoUsuarioScreen extends StatefulWidget {
   const NovoUsuarioScreen({super.key});
@@ -370,14 +371,16 @@ class _NovoUsuarioScreenState extends State<NovoUsuarioScreen> {
 
       if (!mounted) return;
 
-      if (resultadoApi['success'] == true) {
+      if (resultadoApi['status'] == 'sucesso') {
         final identificadorDoServidor = resultadoApi['identificador'] ??
             (resultadoApi['data'] != null
                 ? resultadoApi['data']['identificador']
                 : null);
-        final txidDoServidor = resultadoApi['txid'] ??
+        final txidDoServidor = resultadoApi[
+                'txid_sugerido'] ?? // ✅ Buscar a chave correta
             (resultadoApi['data'] != null
-                ? resultadoApi['data']['txid']
+                ? resultadoApi['data'][
+                    'txid_sugerido'] // ✅ Buscar a chave correta dentro de 'data'
                 : null);
 
         if (identificadorDoServidor == null ||

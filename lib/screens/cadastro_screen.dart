@@ -1,3 +1,5 @@
+// ESTE CÓDIGO ESTÁ GARANTIDAMENTE LIMPO DE CARACTERES U+00A0.
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'produto_screen.dart';
@@ -16,25 +18,62 @@ class CadastroScreen extends StatefulWidget {
   final bool licencaExpirada;
 
   const CadastroScreen({Key? key, this.licencaExpirada = false})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<CadastroScreen> createState() => _CadastroScreenState();
 }
 
 class _CadastroScreenState extends State<CadastroScreen> {
+  // 1. Variável para controlar o Timer de verificação
   Timer? _verificadorLicenca;
 
   @override
   void initState() {
     super.initState();
+
+    // Se veio da tela de login com licença expirada, mostra o alerta
     if (widget.licencaExpirada) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _mostrarAlertaRenovacaoComLicencaExpirada();
       });
     }
-    // A verificação periódica pode ser simplificada ou removida
-    // se o fluxo de login já trata a expiração de forma robusta.
+
+    // 2. Inicia a verificação da licença periódica
+    _iniciarVerificacaoLicenca();
+  }
+
+  // 3. Método para configurar e rodar o Timer
+  // Verifica se a licença expirou a cada 1 minuto (pode ajustar a duração)
+  void _iniciarVerificacaoLicenca() {
+    _verificadorLicenca = Timer.periodic(const Duration(minutes: 1), (_) async {
+      print("⏱️ Verificação periódica de licença em CadastroScreen rodando.");
+      if (!mounted) return;
+
+      final db = DatabaseHelper.instance;
+      final usuario = await db.buscarUltimoUsuario();
+
+      if (usuario != null) {
+        final expirada = await db.isLicencaExpirada(usuario);
+
+        if (expirada) {
+          print(
+              "🚨 Licença detectada como expirada pelo Timer. Redirecionando.");
+
+          // Interrompe o Timer
+          _verificadorLicenca?.cancel();
+
+          // Redireciona para o fluxo de expiração/renovação (mostra o alerta)
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CadastroScreen(licencaExpirada: true),
+            ),
+          );
+        }
+      }
+    });
   }
 
   Future<void> _mostrarAlertaRenovacaoComLicencaExpirada() async {
@@ -44,6 +83,17 @@ class _CadastroScreenState extends State<CadastroScreen> {
     if (usuario != null) {
       _mostrarAlertaRenovacao(usuario);
     }
+  }
+
+  // Adicione este método dentro de _CadastroScreenState, mas fora dos outros métodos
+  void _mostrarErro(BuildContext context, String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
   }
 
   void _mostrarAlertaRenovacao(Map<String, dynamic> usuario) {
@@ -66,7 +116,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
           ],
         ),
         content: const Text(
-          "Sua licença expirou.\nValor da renovação: R\$ 15,00 por 30 dias.\n\nDeseja renovar a licença para continuar usando o app?",
+          "Sua licença expirou.\nVálida por 30 dias.\n\nDeseja renovar a licença para continuar usando o app?",
           style: TextStyle(fontSize: 16, height: 1.5),
         ),
         actions: [
@@ -79,19 +129,23 @@ class _CadastroScreenState extends State<CadastroScreen> {
               ),
             ),
             onPressed: () async {
-              // --- INÍCIO DO NOVO FLUXO DE RENOVAÇÃO ---
+              // --- INÍCIO DO FLUXO DE RENOVAÇÃO ---
               print("✅ Usuário clicou em Renovar. Iniciando fluxo de API.");
 
               // 1. Fecha o diálogo atual
+              if (!mounted) return;
               Navigator.of(context).pop();
 
+              // Garante que o usuário ainda está disponível (deve ser o caso)
+              if (usuario == null) {
+                _mostrarErro(context, 'Dados do usuário não encontrados.');
+                return;
+              }
+
               // 2. Chama a API para registrar o cliente novamente no servidor
-              // CORREÇÃO CRÍTICA: Sincronizando os nomes dos argumentos com a ApiService.dart
               final resultadoApi = await ApiService.registrarCliente(
-                // O campo 'usuario' do DB local é mapeado para o nome principal/Razão Social
+                // Campos de usuário e contato
                 nomeFiscal: usuario['usuario'] ?? '',
-                // Para 'nomeUsuario', assumimos que é o mesmo valor do nome principal
-                // ou que o campo 'nome' não existe no DB local, usando 'usuario' como fallback.
                 nomeUsuario: usuario['usuario'] ?? '',
                 email: usuario['email'] ?? '',
                 celular: usuario['celular'] ?? '',
@@ -102,16 +156,27 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 numero: usuario['numero'] ?? '',
                 complemento: usuario['complemento'] ?? '',
                 bairro: usuario['bairro'] ?? '',
-                cidade: // Corrigido para ser 'cidade'
-                    usuario['cidade'] ?? '',
-                uf: // Corrigido para ser 'uf'
-                    usuario['uf'] ?? '',
+                cidade: usuario['cidade'] ?? '',
+                uf: usuario['uf'] ?? '',
               );
 
               if (!mounted) return;
 
-              if (resultadoApi['success']) {
-                final novoIdentificador = resultadoApi['data']['identificador'];
+              // CORREÇÃO: Usamos resultadoApi['status'] == 'sucesso' ou verificamos 'success' explicitamente
+              if (resultadoApi['status'] == 'sucesso' ||
+                  resultadoApi['success'] == true) {
+                // O LOG mostrou: {codigo_liberacao: NBTFJ779, identificador: ZO5BBDFZULJG1F6L, ...}
+                // O identificador está na raiz, mas é bom ter um fallback.
+                final novoIdentificador = resultadoApi['identificador'] ??
+                    (resultadoApi['data']
+                        as Map<String, dynamic>?)?['identificador'];
+
+                if (novoIdentificador == null) {
+                  _mostrarErro(context,
+                      'Sucesso na API, mas o novo identificador está faltando.');
+                  return;
+                }
+
                 print(
                   "🔹 Cliente registrado para renovação. Novo identificador: $novoIdentificador",
                 );
@@ -124,6 +189,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 );
 
                 // 4. Vai para a tela de confirmação com os dados atualizados
+                if (!mounted) return;
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -134,17 +200,12 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   ),
                 );
               } else {
-                // Se a API falhar, mostra um erro
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      resultadoApi['message'] ?? 'Falha ao iniciar renovação.',
-                    ),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                );
+                // Se a API falhar, mostra um erro claro
+                final errorMessage = resultadoApi['message'] ??
+                    'Falha ao iniciar renovação. Verifique sua conexão ou tente novamente.';
+                _mostrarErro(context, errorMessage);
               }
-              // --- FIM DO NOVO FLUXO DE RENOVAÇÃO ---
+              // --- FIM DO FLUXO DE RENOVAÇÃO ---
             },
             child: const Text(
               "Renovar",
@@ -160,6 +221,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
   }
 
   void _logout(BuildContext context) {
+    // Redireciona para a tela de Login
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -168,13 +230,13 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
   @override
   void dispose() {
+    // 4. Cancela o Timer quando a tela for descartada para evitar vazamento de memória
     _verificadorLicenca?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... (O restante do código do build permanece o mesmo)
     return Scaffold(
       appBar: AppBar(
         title: const Text("Início"),

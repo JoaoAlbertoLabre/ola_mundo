@@ -5,6 +5,7 @@ import 'package:vendo_certo/utils/codigo_helper.dart';
 import 'package:vendo_certo/screens/login_screen.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart'; // Certifique-se de que este pacote está no seu pubspec.yaml
+import '../screens/login_screen.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -704,7 +705,6 @@ class DatabaseHelper {
 
     final dataLiberacao = DateTime.parse(usuario['data_liberacao']);
     // O PRAZO_EXPIRACAO_MINUTOS precisa ser definido ou importado
-    const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
     final dataExpiracao = dataLiberacao.add(
       Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
     );
@@ -717,8 +717,6 @@ class DatabaseHelper {
     Map<String, dynamic> usuarioAntigo,
   ) async {
     final db = await database;
-    //const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
-
     print("🔹🔹 Função resetarUsuarioExpirado chamada");
 
     // Limpa todos os usuários
@@ -812,7 +810,7 @@ class DatabaseHelper {
     String novoIdentificador,
   ) async {
     final db = await instance.database;
-    const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
+    //const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
     final agoraUtc = DateTime.now().toUtc();
 
     final dadosAtualizados = {

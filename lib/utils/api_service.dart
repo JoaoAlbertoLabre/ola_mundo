@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:async'; // Necessário para o TimeoutException
+import '../screens/login_screen.dart';
 
 class ApiService {
   static final String _baseUrl = 'https://vendocerto-app.onrender.com';
@@ -18,8 +19,8 @@ class ApiService {
     required String numero,
     required String complemento,
     required String bairro,
-    required String cidade, // Mantém 'cidade' como nome do parâmetro
-    required String uf, // Mantém 'uf' como nome do parâmetro
+    required String cidade,
+    required String uf,
   }) async {
     try {
       final response = await http
@@ -27,7 +28,6 @@ class ApiService {
             Uri.parse('$_baseUrl/api/registrar-cliente'),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({
-              // Mapeamento de chaves para o backend (Corrigido na rodada anterior)
               'nome': nomeFiscal,
               'nomeUsuario': nomeUsuario,
               'email': email,
@@ -44,53 +44,61 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 60));
 
-      final responseBody = json.decode(response.body);
+      // Tenta decodificar o corpo da resposta
+      Map<String, dynamic> responseBody;
+      try {
+        responseBody = json.decode(response.body);
+      } catch (e) {
+        // Falha ao decodificar JSON (resposta inesperada do servidor)
+        return {
+          'status': 'erro',
+          'message': 'Erro de comunicação: Resposta inválida do servidor.'
+        };
+      }
 
-      // DEBUG: Adiciona o print para ver o que o servidor realmente está a retornar
       print(
         'Resposta do Servidor (Status ${response.statusCode}): $responseBody',
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Acessamos 'identificador' e 'txid' diretamente da raiz do objeto JSON,
+        // Sucesso
         final identificador = responseBody['identificador'] as String?;
-        final txid =
-            responseBody['txid_sugerido'] as String?; // Usando txid_sugerido
 
         if (identificador == null || identificador.isEmpty) {
+          // Se o servidor retornar 200/201 mas faltar o identificador
           return {
-            'success': false,
+            'status': 'erro',
             'message':
                 'Erro de comunicação: Identificador de cliente não retornado pelo servidor.',
           };
         }
 
-        // NOVO DEBUG: Imprime o identificador extraído com sucesso
         print(
           'SUCESSO API: Identificador retornado e extraído: $identificador',
         );
 
-        // Retorna sucesso e o identificador
-        return {'success': true, 'identificador': identificador, 'txid': txid};
+        // 💡 CORREÇÃO CRÍTICA: Retorna o mapa original do servidor,
+        // que contém 'status: sucesso', 'identificador', 'txid_sugerido'.
+        // Isso evita o 'NoSuchMethodError: The method '[]' was called on null' na tela.
+        return responseBody;
       } else {
-        // Se houver qualquer erro (400, 500, etc.), o erro será exibido
+        // Erros de Status (4xx, 5xx)
         return {
-          'success': false,
+          'status': 'erro',
           'message': responseBody['erro'] ??
               responseBody['message'] ??
-              'Falha ao registrar cliente.',
+              'Falha ao registrar cliente. Status: ${response.statusCode}',
         };
       }
-      // 🚨 NOVO TRATAMENTO: Captura o TimeoutException especificamente
     } on TimeoutException {
       return {
-        'success': false,
+        'status': 'erro',
         'message':
             'O servidor demorou muito para responder. Tente novamente mais tarde.',
       };
     } catch (e) {
       return {
-        'success': false,
+        'status': 'erro',
         'message':
             'Não foi possível conectar ao servidor. Verifique sua conexão. Erro: ${e.toString()}',
       };
@@ -136,7 +144,6 @@ class ApiService {
 
   /// Envia o código de liberação digitado pelo usuário para validação.
   static Future<Map<String, dynamic>> confirmarCodigo(String codigo) async {
-    // A URL está correta e agora o backend tem uma rota para respondê-la.
     final url = Uri.parse('$_baseUrl/api/confirmar-codigo');
     try {
       final response = await http
@@ -172,13 +179,7 @@ class ApiService {
   }
 
   /// Pede ao backend para criar a cobrança PIX e retorna os dados do QR Code.
-  // Substitua a sua função criarCobranca por esta:
-
-  /// Pede ao backend para criar a cobrança PIX e retorna os dados do QR Code.
-  static Future<Map<String, dynamic>> criarCobranca(
-    String
-        txid, // <-- MUDANÇA 1: Agora recebemos o 'txid' em vez do 'identificador'
-  ) async {
+  static Future<Map<String, dynamic>> criarCobranca(String txid) async {
     // Validação simples para evitar enviar um txid nulo ou vazio
     if (txid.isEmpty) {
       return {
@@ -193,7 +194,7 @@ class ApiService {
           .post(
             Uri.parse('$_baseUrl/api/criar-cobranca'),
             headers: {'Content-Type': 'application/json'},
-            // <-- MUDANÇA 2: Enviamos o txid com a chave que o backend espera ('txid_sugerido')
+            // Enviamos o txid com a chave que o backend espera ('txid_sugerido')
             body: json.encode({'txid_sugerido': txid}),
           )
           .timeout(const Duration(seconds: 20));
