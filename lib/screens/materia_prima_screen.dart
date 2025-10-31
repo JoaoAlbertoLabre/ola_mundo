@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/materia_prima_model.dart';
+import '../db/database_helper.dart';
+import '../models/materia_prima_model.dart';
 
 class MateriaPrimaScreen extends StatefulWidget {
   const MateriaPrimaScreen({Key? key}) : super(key: key);

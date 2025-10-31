@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:ola_mundo/db/database_helper.dart';
-import 'package:ola_mundo/models/custo_comercial_model.dart';
+import '../db/database_helper.dart';
+import '../models/custo_comercial_model.dart';
 
-// Tela de listagem (opcional)
+const Color primaryColor = Color(0xFF81D4FA); // Azul suave mais claro
+const Color buttonBege = Color(0xFFF5F5DC); // Bege claro para botões de inserir
+
 class CustoComercialScreen extends StatefulWidget {
   const CustoComercialScreen({Key? key}) : super(key: key);
 
@@ -32,41 +34,66 @@ class _CustoComercialScreenState extends State<CustoComercialScreen> {
     carregarCustos();
   }
 
+  double calcularTotal(CustoComercial item) {
+    return (item.comissao ?? 0) +
+        (item.impostos ?? 0) +
+        (item.cartao ?? 0) +
+        (item.outros1 ?? 0);
+  }
+
+  void abrirForm({CustoComercial? item}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CustoComercialForm(item: item)),
+    ).then((_) => carregarCustos());
+  }
+
   @override
   Widget build(BuildContext context) {
-    double total = custos.isNotEmpty
-        ? (custos.first.comissao ?? 0) +
-              (custos.first.impostos ?? 0) +
-              (custos.first.cartao ?? 0) +
-              (custos.first.outros1 ?? 0) +
-              (custos.first.outros2 ?? 0) +
-              (custos.first.outros3 ?? 0)
-        : 0;
+    double total = custos.isNotEmpty ? calcularTotal(custos.first) : 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Custo Comercial')),
+      appBar: AppBar(
+        title: const Text(
+          'Custo Comercial',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: primaryColor,
+        centerTitle: true,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             if (custos.isEmpty)
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const CustoComercialForm(),
+              Center(
+                child: SizedBox(
+                  width: 220,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: buttonBege,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                  ).then((_) => carregarCustos());
-                },
-                child: const Text('Inserir Custo Comercial'),
+                    onPressed: () => abrirForm(),
+                    child: const Text(
+                      'Inserir Custo Comercial',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             if (custos.isNotEmpty)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Total: R\$ ${total.toStringAsFixed(2)}',
+                    'Total: ${total.toStringAsFixed(2)}%',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -75,19 +102,11 @@ class _CustoComercialScreenState extends State<CustoComercialScreen> {
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  CustoComercialForm(item: custos.first),
-                            ),
-                          ).then((_) => carregarCustos());
-                        },
+                        icon: const Icon(Icons.edit, color: Colors.blueGrey),
+                        onPressed: () => abrirForm(item: custos.first),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete),
+                        icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => deletarCusto(custos.first.id!),
                       ),
                     ],
@@ -101,7 +120,6 @@ class _CustoComercialScreenState extends State<CustoComercialScreen> {
   }
 }
 
-// Tela de formulário (edição/inclusão)
 class CustoComercialForm extends StatefulWidget {
   final CustoComercial? item;
   const CustoComercialForm({Key? key, this.item}) : super(key: key);
@@ -117,8 +135,6 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
   final impostosCtrl = TextEditingController();
   final cartaoCtrl = TextEditingController();
   final outros1Ctrl = TextEditingController();
-  final outros2Ctrl = TextEditingController();
-  final outros3Ctrl = TextEditingController();
 
   @override
   void initState() {
@@ -128,8 +144,6 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
       impostosCtrl.text = widget.item!.impostos?.toString() ?? '';
       cartaoCtrl.text = widget.item!.cartao?.toString() ?? '';
       outros1Ctrl.text = widget.item!.outros1?.toString() ?? '';
-      outros2Ctrl.text = widget.item!.outros2?.toString() ?? '';
-      outros3Ctrl.text = widget.item!.outros3?.toString() ?? '';
     }
   }
 
@@ -140,8 +154,6 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
       impostos: double.tryParse(impostosCtrl.text) ?? 0,
       cartao: double.tryParse(cartaoCtrl.text) ?? 0,
       outros1: double.tryParse(outros1Ctrl.text) ?? 0,
-      outros2: double.tryParse(outros2Ctrl.text) ?? 0,
-      outros3: double.tryParse(outros3Ctrl.text) ?? 0,
     );
 
     if (widget.item == null) {
@@ -153,6 +165,29 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
     Navigator.pop(context);
   }
 
+  Widget _campoPercent({
+    required String label,
+    required TextEditingController controller,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: label,
+          suffixText: '%',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 10,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -162,48 +197,46 @@ class _CustoComercialFormState extends State<CustoComercialForm> {
               ? 'Novo Custo Comercial'
               : 'Editar Custo Comercial',
         ),
+        backgroundColor: primaryColor,
+        centerTitle: true,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: comissaoCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Comissão Vendas'),
-              ),
-              TextField(
-                controller: impostosCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Impostos'),
-              ),
-              TextField(
-                controller: cartaoCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Cartão de Crédito/Débito',
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  "Exemplo de uso 5.00, é igual 5.00%",
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              TextField(
-                controller: outros1Ctrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Outros 1'),
+              _campoPercent(label: 'Impostos', controller: impostosCtrl),
+              _campoPercent(
+                label: 'Cartão de Crédito/Débito',
+                controller: cartaoCtrl,
               ),
-              TextField(
-                controller: outros2Ctrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Outros 2'),
-              ),
-              TextField(
-                controller: outros3Ctrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Outros 3'),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: salvarOuAtualizar,
-                child: Text(widget.item == null ? 'Salvar' : 'Atualizar'),
+              _campoPercent(label: 'Comissão Vendas', controller: comissaoCtrl),
+              _campoPercent(label: 'Outros 1', controller: outros1Ctrl),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 45,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor.withOpacity(0.8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: salvarOuAtualizar,
+                  child: Text(
+                    widget.item == null ? 'Salvar' : 'Atualizar',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
             ],
           ),
