@@ -16,7 +16,6 @@ const Color secondaryColor = Color(0xFF03A9F4);
 
 const String MASK_CPF = '###.###.###-##';
 const String MASK_CNPJ = '##.###.###/####-##';
-//const int PRAZO_EXPIRACAO_MINUTOS = 15;
 
 class NovoUsuarioScreen extends StatefulWidget {
   const NovoUsuarioScreen({super.key});

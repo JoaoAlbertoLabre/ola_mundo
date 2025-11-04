@@ -245,18 +245,16 @@ class ApiService {
 
   /// Envia o código de recuperação do usuário para o backend (Render)
   static Future<Map<String, dynamic>> enviarCodigoRecuperacao({
-    required String usuario,
+    required String email,
     required String codigo,
   }) async {
-    final url = Uri.parse(
-        '$_baseUrl/api/atualizar-codigo-recuperacao'); // Crie esta rota no backend
+    final url = Uri.parse('$_baseUrl/api/atualizar-codigo-recuperacao');
     try {
       final response = await http
           .post(
             url,
             headers: {'Content-Type': 'application/json; charset=UTF-8'},
-            body:
-                jsonEncode({'usuario': usuario, 'codigo_recuperacao': codigo}),
+            body: jsonEncode({'email': email, 'codigo_recuperacao': codigo}),
           )
           .timeout(const Duration(seconds: 15));
 

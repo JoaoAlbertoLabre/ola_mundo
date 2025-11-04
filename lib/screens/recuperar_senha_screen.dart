@@ -1,9 +1,8 @@
 import 'dart:math';
-import 'package:flutter/material.dart';
-import 'package:vendo_certo/utils/api_service.dart';
-import '../db/database_helper.dart';
-import 'package:crypto/crypto.dart'; // Importado para hashing
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:crypto/crypto.dart'; // Para hashing seguro
+import '../db/database_helper.dart';
 import '../utils/api_service.dart';
 
 class RecuperarSenhaScreen extends StatefulWidget {
@@ -22,26 +21,25 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
   bool _codigoCorreto = false;
   String _emailCliente = "";
   String _codigoGerado = "";
-  bool _isLoading = false; // Indica se está salvando a senha
+  bool _isLoading = false;
 
-  // --- Função de Hashing Segura (Usando SHA-256 como exemplo) ---
-  // ATENÇÃO: Para senhas em ambiente de produção, substitua este método por um
-  // algoritmo KDF robusto como 'bcrypt' ou 'Argon2' para maior segurança.
+  // --- Gera hash seguro da senha ---
   String _gerarHashSeguro(String senhaPura) {
     final bytes = utf8.encode(senhaPura);
     final hashDigest = sha256.convert(bytes);
     return hashDigest.toString();
   }
-  // -----------------------------------------------------------------
 
-  // Gerar código de 6 dígitos
+  // --- Gera código de 6 dígitos ---
   String _gerarCodigo() {
     final random = Random();
     return List.generate(6, (_) => random.nextInt(10).toString()).join();
   }
 
+  // --- Enviar código de recuperação ---
   Future<void> _enviarCodigo() async {
     final nome = _usuarioController.text.trim();
+
     if (nome.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -50,7 +48,7 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
       return;
     }
 
-    final db = DatabaseHelper.instance;
+    final db = DatabaseHelper.instance; // ✅ Declarado antes de usar
     final usuario = await db.buscarUsuarioPorNome(nome);
 
     if (usuario == null) {
@@ -61,7 +59,7 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
       return;
     }
 
-    // 🔢 Gera o código de recuperação
+    // Gera código
     final codigo = _gerarCodigo();
 
     setState(() {
@@ -70,21 +68,18 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
       _emailCliente = usuario['email'] ?? '***@***';
     });
 
-    print("Código de recuperação gerado: $codigo"); // Vai aparecer no console
+    print("Código de recuperação gerado: $codigo");
 
-    // 🔒 Armazena código no DB local
+    // Salva localmente
     await db.salvarCodigoRecuperacao(nome, codigo);
 
-    // 🌐 Envia código de recuperação para o Render
     final resultadoApi = await ApiService.enviarCodigoRecuperacao(
-      usuario: nome,
+      email: usuario['email'],
       codigo: codigo,
     );
 
     if (!mounted) return;
-    print('Resultado envio Render: $resultadoApi');
 
-    // Mostra mensagem para o usuário
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -96,6 +91,7 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
     );
   }
 
+  // --- Verificar código ---
   Future<void> _verificarCodigo() async {
     if (_codigoController.text.trim() == _codigoGerado) {
       setState(() {
@@ -109,6 +105,7 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
     }
   }
 
+  // --- Salvar nova senha ---
   Future<void> _salvarNovaSenha() async {
     final novaSenha = _novaSenhaController.text.trim();
     if (novaSenha.isEmpty) {
@@ -127,11 +124,7 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
     });
 
     try {
-      // 🔐 PASSO CRÍTICO: Geração do hash da nova senha
       final senhaHashed = _gerarHashSeguro(novaSenha);
-
-      // Salva o HASH da senha no banco
-      // Assume-se que 'atualizarSenhaHash' foi adaptado para receber e salvar o hash.
       await db.atualizarSenhaHash(usuario, senhaHashed);
 
       if (!mounted) return;
@@ -139,19 +132,18 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
         const SnackBar(content: Text("Senha atualizada com sucesso!")),
       );
 
-      // Limpa os campos
+      // Limpa campos
       _usuarioController.clear();
       _codigoController.clear();
       _novaSenhaController.clear();
 
-      // Reseta flags
       setState(() {
         _codigoEnviado = false;
         _codigoCorreto = false;
         _codigoGerado = "";
       });
 
-      Navigator.pop(context); // Volta à tela de login
+      Navigator.pop(context);
     } finally {
       setState(() {
         _isLoading = false;
@@ -189,8 +181,7 @@ class _RecuperarSenhaScreenState extends State<RecuperarSenhaScreen> {
               const SizedBox(height: 20),
               TextField(
                 controller: _codigoController,
-                keyboardType:
-                    TextInputType.number, // Ajuda na digitação do código
+                keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: "Digite o código recebido",
                   border: OutlineInputBorder(),

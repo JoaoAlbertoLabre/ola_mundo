@@ -1,7 +1,7 @@
 name: vendo_certo
 description: "Aplicativo de licenciamento com renovação via código."
 publish_to: 'none'
-version: 1.0.0+13
+version: 1.0.0+19
 
 environment:
   sdk: '>=3.2.3 <4.0.0'

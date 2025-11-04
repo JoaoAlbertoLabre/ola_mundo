@@ -704,7 +704,6 @@ class DatabaseHelper {
     if (usuario == null) return true;
 
     final dataLiberacao = DateTime.parse(usuario['data_liberacao']);
-    // O PRAZO_EXPIRACAO_MINUTOS precisa ser definido ou importado
     final dataExpiracao = dataLiberacao.add(
       Duration(minutes: PRAZO_EXPIRACAO_MINUTOS),
     );
@@ -810,7 +809,6 @@ class DatabaseHelper {
     String novoIdentificador,
   ) async {
     final db = await instance.database;
-    //const PRAZO_EXPIRACAO_MINUTOS = 15; // Valor placeholder
     final agoraUtc = DateTime.now().toUtc();
 
     final dadosAtualizados = {
