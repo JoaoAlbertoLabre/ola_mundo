@@ -11,8 +11,7 @@ class AjudaScreen extends StatelessWidget {
   final List<Map<String, dynamic>> topicos = const [
     {
       "titulo": "Cadastro de Produto",
-      "conteudo":
-          "PRODUTO:\n\n"
+      "conteudo": "PRODUTO:\n\n"
           "1 – **Nome** → Digite o nome do produto. Ex: Pastel, Bolo, Pamonha, Laranja, etc.\n\n"
           "2 – **Unidade** → Informe a unidade de medida usada na compra/venda. Ex: Kg, dz, pç, un, lt, etc.\n\n"
           "3 – **Tipo de Produto** → Escolha se o produto é *Comprado* ou *Produzido*.\n"
@@ -27,8 +26,7 @@ class AjudaScreen extends StatelessWidget {
     },
     {
       "titulo": "Composição do Produto",
-      "conteudo":
-          "COMPOSIÇÃO DO PRODUTO:\n\n"
+      "conteudo": "COMPOSIÇÃO DO PRODUTO:\n\n"
           "1 – **Selecionar Insumo** → Escolha o insumo que será usado na produção do produto e clique nele.\n\n"
           "2 – **Quantidade** → Informe a quantidade do insumo usado.\n\n"
           "3 – **Novo Insumo** → Caso o insumo ainda não esteja cadastrado, clique no botão **'+ Novo'** que fica na parte superior direita da tela.\n\n"
@@ -36,8 +34,7 @@ class AjudaScreen extends StatelessWidget {
     },
     {
       "titulo": "Cadastro de Insumos",
-      "conteudo":
-          "CADASTRO DE INSUMOS:\n\n"
+      "conteudo": "CADASTRO DE INSUMOS:\n\n"
           "1 – **Nome** → Digite o nome do insumo. Ex: Farinha, Açúcar, Ovo, Laranja, etc.\n\n"
           "2 – **Unidade** → Informe a unidade de medida usada na compra/venda. Ex: Kg, dz, pç, un, lt, etc.\n\n"
           "3 – **Valor** → Informe o valor da compra por unidade. Ex: Se você comprou um pacote de 5 kg de açúcar por R\$ 15,00, o valor unitário a ser informado é R\$ 3,00 (R\$ 15,00 dividido por 5).\n\n"
@@ -45,24 +42,26 @@ class AjudaScreen extends StatelessWidget {
     },
     {
       "titulo": "Cadastro de Custos Fixos",
-      "conteudo":
-          "CADASTRO DE CUSTOS FIXOS:\n\n"
+      "conteudo": "CADASTRO DE CUSTOS FIXOS:\n\n"
           "1 – Preencha os valores nos campos correspondentes.\n\n"
           "2 – **Outros 1** → Informe um custo que não esteja previsto nos outros campos.\n\n"
           "3 – **Botão Salvar** → Grava os valores informados.",
     },
     {
       "titulo": "Cadastro de Custos Comerciais",
-      "conteudo":
-          "CADASTRO DE CUSTOS COMERCIAIS:\n\n"
-          "1 – Preencha os valores percentuais nos campos correspondentes.\n\n"
-          "2 – **Outros 1** → Informe um custo que não esteja previsto nos outros campos.\n\n"
-          "3 – **Botão Salvar** → Grava os percentuais informados.",
+      "conteudo": "CADASTRO DE CUSTOS COMERCIAIS:\n\n"
+          "Esta tela permite registrar os custos percentuais que afetam o faturamento dos seus produtos, utilizando a lógica de custo efetivo (ponderado).\n\n"
+          "1 – **Campos Ponderados (Impostos, Comissão, Cartões):**\n"
+          "    * **Custo %:** O percentual real da taxa (Ex: Taxa de imposto 5%, Taxa do cartão de crédito 4%).\n"
+          "    * **Incidência nas Vendas %:** A porcentagem das suas vendas totais que é afetada por este custo (Ex: Se apenas 30% das vendas são feitas no Cartão de Crédito, a incidência é 30%).\n"
+          "    * **Observação:** Se a Incidência for 100% ou ficar em branco, o Custo % será aplicado a 100% do faturamento.\n\n"
+          "2 – **Campos Outros (Outros 1, Outros 2, Outros 3):**\n"
+          "    * Informe um custo que não esteja previsto nos campos acima. Estes campos não usam a lógica de incidência, sendo aplicados a 100% do faturamento.\n\n"
+          "3 – **Botão Salvar/Atualizar:** Grava os percentuais informados e atualiza o cálculo de custo efetivo."
     },
     {
       "titulo": "Cadastro de faturamento",
-      "conteudo":
-          "CADASTRO DE FATURAMENTO:\n\n"
+      "conteudo": "CADASTRO DE FATURAMENTO:\n\n"
           "1 – Escolha o Mês e o Ano.\n\n"
           "2 – Preencha o valor real. No primeiro faturamento o ideal é registrar a média dos faturamentos.\n\n"
           "3 – O sistema usa a média dos faturamentos limitando aos 12 últimos. Quando altera o faturamento altera o índice do CF e o lucro.\n\n"
@@ -70,8 +69,7 @@ class AjudaScreen extends StatelessWidget {
     },
     {
       "titulo": "Cadastro de Lucro Desejado",
-      "conteudo":
-          "CADASTRO DE LUCRO DESEJADO:\n\n"
+      "conteudo": "CADASTRO DE LUCRO DESEJADO:\n\n"
           "1 – Escolha o **Mês** e o **Ano** para o qual deseja definir o lucro.\n\n"
           "2 – Selecione o tipo de entrada: **Percentual** (ex: 20%) ou **Valor** (ex: R\$ 3000).\n\n"
           "3 – Preencha o campo com o percentual ou valor desejado.\n\n"
@@ -80,8 +78,7 @@ class AjudaScreen extends StatelessWidget {
     },
     {
       "titulo": "Contato",
-      "conteudo":
-          "E-MAIL DE SUPORTE:\n\n"
+      "conteudo": "E-MAIL DE SUPORTE:\n\n"
           "suporte@vendocerto.com.br\n\n"
           "Pode pedir a exclusão dos seus dados por esse email e sua conta não poderá ser renovada.\n\n"
           "Lembre-se seus dados são necessários para a emissão das nfs-e.\n\n",

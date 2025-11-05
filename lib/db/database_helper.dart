@@ -142,11 +142,17 @@ class DatabaseHelper {
       CREATE TABLE IF NOT EXISTS custo_comercial (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         comissao REAL,
+        comissao_peso REAL DEFAULT 100, -- NOVO
         impostos REAL,
-        cartao REAL,
+        impostos_peso REAL DEFAULT 100, -- NOVO
+        cartao_credito REAL DEFAULT 0,  -- NOVO
+        cartao_credito_peso REAL DEFAULT 100, -- NOVO
+        cartao_debito REAL DEFAULT 0,   -- NOVO
+        cartao_debito_peso REAL DEFAULT 100,  -- NOVO
         outros1 REAL,
         outros2 REAL,
         outros3 REAL
+        -- cartao REAL, <--- Se existia, remova ou migre
       )
       ''');
 
