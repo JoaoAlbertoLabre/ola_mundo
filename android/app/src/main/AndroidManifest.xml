@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <!-- PERMISSÃO DE INTERNET: Local correto para uso no nível do Manifest -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
-        android:label="ola_mundo"
+        android:label="VendoCerto"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -31,7 +35,7 @@
     		android:name="flutterEmbedding"
     		android:value="2" />
 
-	<meta-data
+	    <meta-data
     		android:name="io.flutter.embedding.android.ImpellerEnabled"
     		android:value="false" />
 
